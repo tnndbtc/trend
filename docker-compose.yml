@@ -18,6 +18,7 @@ services:
     environment:
       # Pass environment variables from host (takes precedence over .env.docker)
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
       # Python environment
       - PYTHONPATH=/app/trend_agent:/app
       - TRANSFORMERS_CACHE=/root/.cache/huggingface

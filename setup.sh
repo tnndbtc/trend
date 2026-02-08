@@ -49,6 +49,7 @@ show_menu() {
     echo "==================================================${NC}"
     echo ""
     echo -e "${GREEN}1)${NC} Build and start container"
+    echo -e "${GREEN}2)${NC} Collect trends"
     echo -e "${RED}0)${NC} Exit"
     echo ""
     echo -n "Select an option: "
@@ -62,26 +63,27 @@ build_and_start() {
     echo "==================================================${NC}"
     echo ""
 
-    # Check if OPENAI_API_KEY is set in environment
+    # Check if .env.docker exists and create it if missing
+    # This must happen before any docker-compose commands
+    if [ ! -f .env.docker ]; then
+        echo -e "${YELLOW}⚠️  .env.docker not found. Creating from template...${NC}"
+
+        if [ -f .env.docker.example ]; then
+            cp .env.docker.example .env.docker
+            echo -e "${GREEN}✅ Created .env.docker from example${NC}"
+            echo -e "${YELLOW}⚠️  IMPORTANT: Edit .env.docker and add your OPENAI_API_KEY${NC}"
+            echo ""
+            read -p "Press Enter to continue after you've added your API key, or Ctrl+C to exit..."
+        else
+            echo -e "${RED}❌ .env.docker.example not found${NC}"
+            return 1
+        fi
+    fi
+
+    # Check if OPENAI_API_KEY is set in environment or .env.docker
     if [ -n "$OPENAI_API_KEY" ]; then
         echo -e "${GREEN}✅ Using OPENAI_API_KEY from environment variable${NC}"
     else
-        # Check if .env.docker exists
-        if [ ! -f .env.docker ]; then
-            echo -e "${YELLOW}⚠️  .env.docker not found. Creating from template...${NC}"
-
-            if [ -f .env.docker.example ]; then
-                cp .env.docker.example .env.docker
-                echo -e "${GREEN}✅ Created .env.docker from example${NC}"
-                echo -e "${YELLOW}⚠️  IMPORTANT: Edit .env.docker and add your OPENAI_API_KEY${NC}"
-                echo ""
-                read -p "Press Enter to continue after you've added your API key, or Ctrl+C to exit..."
-            else
-                echo -e "${RED}❌ .env.docker.example not found${NC}"
-                return 1
-            fi
-        fi
-
         # Validate OPENAI_API_KEY is set in .env.docker
         if grep -q "your_api_key_here" .env.docker; then
             echo -e "${RED}❌ OPENAI_API_KEY not set in .env.docker${NC}"
@@ -92,14 +94,24 @@ build_and_start() {
         echo -e "${GREEN}✅ Environment configuration found in .env.docker${NC}"
     fi
 
+    # Check if ALLOWED_HOSTS is set in environment
+    if [ -n "$ALLOWED_HOSTS" ]; then
+        echo -e "${GREEN}✅ Using ALLOWED_HOSTS from environment variable: $ALLOWED_HOSTS${NC}"
+    else
+        echo -e "${BLUE}ℹ️  Using ALLOWED_HOSTS from .env.docker${NC}"
+    fi
+
     # Create data directories
     echo -e "${BLUE}📁 Creating data directories...${NC}"
     mkdir -p data/db data/cache
     echo -e "${GREEN}✅ Data directories created${NC}"
 
-    # Stop any existing containers
-    echo -e "${BLUE}🛑 Stopping any existing containers...${NC}"
+    # Stop and remove any existing containers
+    echo -e "${BLUE}🛑 Stopping and removing any existing containers...${NC}"
+    docker stop trend-intelligence-agent 2>/dev/null || true
+    docker rm -f trend-intelligence-agent 2>/dev/null || true
     ${DOCKER_COMPOSE} down 2>/dev/null || true
+    echo -e "${GREEN}✅ Cleanup complete${NC}"
 
     # Build the Docker image
     echo -e "${BLUE}🔨 Building Docker image...${NC}"
@@ -156,6 +168,63 @@ build_and_start() {
     echo ""
 }
 
+# Function to collect trends
+collect_trends() {
+    echo ""
+    echo -e "${BLUE}=================================================="
+    echo "  Collect Trends"
+    echo "==================================================${NC}"
+    echo ""
+
+    # Check if container is running
+    if ! ${DOCKER_COMPOSE} ps | grep -q "Up"; then
+        echo -e "${RED}❌ Container is not running${NC}"
+        echo "Please start the container first (Option 1)"
+        return 1
+    fi
+
+    echo -e "${GREEN}✅ Container is running${NC}"
+    echo ""
+
+    # Prompt for max trends
+    echo -e "${BLUE}How many trends to summarize?${NC}"
+    echo -e "  ${YELLOW}(Higher numbers = more comprehensive but slower and more API credits)${NC}"
+    echo -n "Max trends (default: 20): "
+    read max_trends
+
+    # Use default if empty
+    if [ -z "$max_trends" ]; then
+        max_trends=20
+    fi
+
+    # Validate it's a number
+    if ! [[ "$max_trends" =~ ^[0-9]+$ ]]; then
+        echo -e "${RED}❌ Invalid number. Using default: 20${NC}"
+        max_trends=20
+    fi
+
+    echo ""
+    echo -e "${BLUE}🚀 Starting trend collection...${NC}"
+    echo -e "${BLUE}   Max trends: $max_trends${NC}"
+    echo ""
+
+    # Run the collect_trends command
+    if ${DOCKER_COMPOSE} exec web python manage.py collect_trends --max-trends "$max_trends"; then
+        echo ""
+        echo -e "${GREEN}✅ Trend collection completed successfully!${NC}"
+        echo ""
+        echo -e "${BLUE}📊 View results at:${NC} http://localhost:11800"
+        echo -e "${BLUE}🔧 Admin panel:${NC}    http://localhost:11800/admin"
+        return 0
+    else
+        echo ""
+        echo -e "${RED}❌ Trend collection failed${NC}"
+        echo "Check the error messages above or view logs with:"
+        echo "  ${DOCKER_COMPOSE} logs -f"
+        return 1
+    fi
+}
+
 # Main menu loop
 while true; do
     show_menu
@@ -172,6 +241,16 @@ while true; do
                 read -p "Press Enter to return to menu..."
             fi
             ;;
+        2)
+            if collect_trends; then
+                echo ""
+                read -p "Press Enter to return to menu..."
+            else
+                echo ""
+                echo -e "${RED}❌ Trend collection failed. Please check the errors above.${NC}"
+                read -p "Press Enter to return to menu..."
+            fi
+            ;;
         0)
             echo ""
             echo -e "${GREEN}👋 Goodbye!${NC}"
@@ -180,7 +259,7 @@ while true; do
             ;;
         *)
             echo ""
-            echo -e "${RED}❌ Invalid option. Please select 1 or 0.${NC}"
+            echo -e "${RED}❌ Invalid option. Please select 1, 2, or 0.${NC}"
             sleep 2
             ;;
     esac
