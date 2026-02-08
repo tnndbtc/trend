@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trend-intelligence-agent
+    ports:
+      - "11800:8000"
+    volumes:
+      # Persist database in subdirectory to avoid overwriting app files
+      - ./data/db:/app/web_interface/db
+      # Cache for sentence-transformers models
+      - ./data/cache:/root/.cache
+    env_file:
+      - .env.docker
+    environment:
+      # Pass environment variables from host (takes precedence over .env.docker)
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Python environment
+      - PYTHONPATH=/app/trend_agent:/app
+      - TRANSFORMERS_CACHE=/root/.cache/huggingface
+      - SENTENCE_TRANSFORMERS_HOME=/root/.cache/sentence-transformers
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
