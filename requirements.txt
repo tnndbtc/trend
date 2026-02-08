@@ -10,3 +10,5 @@ python-dotenv>=1.0.0
 Django>=5.0.0
 django-extensions>=3.2.0
 asgiref>=3.7.0
+langdetect>=1.0.9
+trafilatura>=1.6.0

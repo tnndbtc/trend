@@ -36,11 +36,15 @@
             <div style="flex: 1;">
                 <h3 style="margin-bottom: 0.5rem; font-size: 1.1rem;">
                     <a href="{{ topic.url }}" target="_blank" rel="noopener noreferrer" style="color: #2c3e50; text-decoration: none;">
-                        {{ topic.title }}
+                        {{ topic.title_summary|default:topic.title }}
                     </a>
                 </h3>
 
-                {% if topic.description %}
+                {% if topic.full_summary %}
+                <p style="color: #666; font-size: 0.875rem; margin-bottom: 0.75rem; line-height: 1.5;">
+                    {{ topic.full_summary|truncatewords:80 }}
+                </p>
+                {% elif topic.description %}
                 <p style="color: #666; font-size: 0.875rem; margin-bottom: 0.75rem; line-height: 1.5;">
                     {{ topic.description|truncatewords:40 }}
                 </p>

@@ -40,6 +40,14 @@ class CollectedTopic(models.Model):
     comments = models.IntegerField(default=0)
     score = models.IntegerField(default=0)
 
+    # Content and language fields
+    language = models.CharField(max_length=10, default='en')
+    content = models.TextField(blank=True)
+
+    # AI-generated summaries
+    title_summary = models.CharField(max_length=500, blank=True)
+    full_summary = models.TextField(blank=True)
+
     cluster = models.ForeignKey('TrendCluster', on_delete=models.SET_NULL, null=True, blank=True, related_name='topics')
 
     class Meta:
@@ -57,6 +65,11 @@ class TrendCluster(models.Model):
     summary = models.TextField()
     score = models.FloatField()
     created_at = models.DateTimeField(default=timezone.now)
+
+    # Language and structured summaries
+    language = models.CharField(max_length=10, default='en')
+    title_summary = models.CharField(max_length=500, blank=True)
+    full_summary = models.TextField(blank=True)
 
     class Meta:
         ordering = ['rank']

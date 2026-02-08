@@ -11,7 +11,8 @@ from processing.normalize import normalize
 from processing.deduplicate import deduplicate
 from processing.cluster import cluster
 from processing.rank import rank_clusters
-from llm.summarizer import summarize
+from processing.content_fetcher import fetch_content_for_topic
+from llm.summarizer import summarize, summarize_single_topic, summarize_topics_batch
 
 
 class Command(BaseCommand):
@@ -83,7 +84,57 @@ class Command(BaseCommand):
         unique_topics = deduplicate(normalized)
         self.stdout.write(f'   {len(unique_topics)} unique topics')
 
-        # Step 4: Save topics to database
+        # Step 4: Fetch full content for all topics
+        self.stdout.write('📥 Fetching full content for topics...')
+        for idx, topic in enumerate(unique_topics, 1):
+            if idx % 10 == 0:
+                self.stdout.write(f'   Fetched {idx}/{len(unique_topics)} topics...')
+            topic.content = await fetch_content_for_topic(topic)
+
+        self.stdout.write(f'✅ Content fetched for {len(unique_topics)} topics')
+
+        # Step 4b: Batch summarize topics (much more efficient!)
+        self.stdout.write('🤖 Batch summarizing topics...')
+        BATCH_SIZE = 15  # Process 15 topics per API call
+        total_batches = (len(unique_topics) + BATCH_SIZE - 1) // BATCH_SIZE
+
+        for batch_idx in range(0, len(unique_topics), BATCH_SIZE):
+            batch = unique_topics[batch_idx:batch_idx + BATCH_SIZE]
+            batch_num = (batch_idx // BATCH_SIZE) + 1
+            self.stdout.write(f'   Processing batch {batch_num}/{total_batches} ({len(batch)} topics)...')
+
+            try:
+                # Batch summarize all topics in this batch
+                results = await summarize_topics_batch(batch)
+
+                # Assign results back to topics
+                for topic, result in zip(batch, results):
+                    topic.title_summary = result.get('title_summary', topic.title)
+                    topic.full_summary = result.get('full_summary', f"[{topic.url}] {topic.title}")
+                    # Update language if provided
+                    if result.get('language'):
+                        topic.language = result['language']
+
+            except Exception as e:
+                self.stdout.write(f'   ⚠️  Batch {batch_num} failed: {str(e)}')
+                self.stdout.write(f'   Falling back to individual processing for this batch...')
+
+                # Fallback: process individually
+                for topic in batch:
+                    try:
+                        summary_result = await summarize_single_topic(topic)
+                        topic.title_summary = summary_result.get('title_summary', topic.title)
+                        topic.full_summary = summary_result.get('full_summary', f"[{topic.url}] {topic.title}")
+                        if summary_result.get('language'):
+                            topic.language = summary_result['language']
+                    except Exception as e2:
+                        self.stdout.write(f'   ⚠️  Failed to summarize topic: {str(e2)}')
+                        topic.title_summary = topic.title
+                        topic.full_summary = f"[{topic.url}] {topic.title}"
+
+        self.stdout.write(f'✅ Batch summarization complete for {len(unique_topics)} topics')
+
+        # Step 5: Save topics to database
         self.stdout.write('💾 Saving topics to database...')
         saved_topics = []
         for topic in unique_topics:
@@ -97,23 +148,27 @@ class Command(BaseCommand):
                 upvotes=topic.metrics.get('upvotes', 0),
                 comments=topic.metrics.get('comments', 0),
                 score=topic.metrics.get('score', 0),
+                language=topic.language,
+                content=topic.content,
+                title_summary=topic.title_summary,
+                full_summary=topic.full_summary,
             )
             saved_topics.append((db_topic, topic))
 
         collection_run.topics_count = len(saved_topics)
         await sync_to_async(collection_run.save)()
 
-        # Step 5: Cluster similar topics
+        # Step 6: Cluster similar topics
         self.stdout.write('🗂️  Clustering similar topics...')
         clusters = cluster(unique_topics)
         self.stdout.write(f'   Created {len(clusters)} clusters')
 
-        # Step 6: Rank clusters
+        # Step 7: Rank clusters
         self.stdout.write('📊 Ranking by importance...')
         ranked = rank_clusters(clusters)
 
-        # Step 7: Summarize top trends
-        self.stdout.write(f'🤖 Generating summaries for top {max_trends} trends...')
+        # Step 8: Summarize top trends (cluster-level)
+        self.stdout.write(f'🤖 Generating cluster summaries for top {max_trends} trends...')
 
         for rank_idx, topic_cluster in enumerate(ranked[:max_trends], 1):
             self.stdout.write(f'   Processing trend #{rank_idx}...')
@@ -133,6 +188,11 @@ class Command(BaseCommand):
                 for t in topic_cluster
             ])
 
+            # Determine cluster language (most common language in cluster)
+            from collections import Counter
+            languages = [t.language for t in topic_cluster if hasattr(t, 'language')]
+            cluster_language = Counter(languages).most_common(1)[0][0] if languages else 'en'
+
             # Create trend cluster in database
             db_cluster = await sync_to_async(TrendCluster.objects.create)(
                 collection_run=collection_run,
@@ -140,6 +200,9 @@ class Command(BaseCommand):
                 title=trend_title,
                 summary=summary,
                 score=score,
+                language=cluster_language,
+                title_summary=trend_title,
+                full_summary=summary,
             )
 
             # Link topics to this cluster

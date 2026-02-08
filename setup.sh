@@ -50,6 +50,7 @@ show_menu() {
     echo ""
     echo -e "${GREEN}1)${NC} Build and start container"
     echo -e "${GREEN}2)${NC} Collect trends"
+    echo -e "${GREEN}3)${NC} Run database migrations"
     echo -e "${RED}0)${NC} Exit"
     echo ""
     echo -n "Select an option: "
@@ -225,6 +226,40 @@ collect_trends() {
     fi
 }
 
+# Function to run database migrations
+run_migrations() {
+    echo ""
+    echo -e "${BLUE}=================================================="
+    echo "  Run Database Migrations"
+    echo "==================================================${NC}"
+    echo ""
+
+    # Check if container is running
+    if ! ${DOCKER_COMPOSE} ps | grep -q "Up"; then
+        echo -e "${RED}❌ Container is not running${NC}"
+        echo "Please start the container first (Option 1)"
+        return 1
+    fi
+
+    echo -e "${GREEN}✅ Container is running${NC}"
+    echo ""
+    echo -e "${BLUE}📊 Running database migrations...${NC}"
+    echo ""
+
+    # Run migrations
+    if ${DOCKER_COMPOSE} exec web python manage.py migrate; then
+        echo ""
+        echo -e "${GREEN}✅ Migrations completed successfully!${NC}"
+        return 0
+    else
+        echo ""
+        echo -e "${RED}❌ Migration failed${NC}"
+        echo "Check the error messages above or view logs with:"
+        echo "  ${DOCKER_COMPOSE} logs -f"
+        return 1
+    fi
+}
+
 # Main menu loop
 while true; do
     show_menu
@@ -251,6 +286,16 @@ while true; do
                 read -p "Press Enter to return to menu..."
             fi
             ;;
+        3)
+            if run_migrations; then
+                echo ""
+                read -p "Press Enter to return to menu..."
+            else
+                echo ""
+                echo -e "${RED}❌ Migration failed. Please check the errors above.${NC}"
+                read -p "Press Enter to return to menu..."
+            fi
+            ;;
         0)
             echo ""
             echo -e "${GREEN}👋 Goodbye!${NC}"
@@ -259,7 +304,7 @@ while true; do
             ;;
         *)
             echo ""
-            echo -e "${RED}❌ Invalid option. Please select 1, 2, or 0.${NC}"
+            echo -e "${RED}❌ Invalid option. Please select 1, 2, 3, or 0.${NC}"
             sleep 2
             ;;
     esac

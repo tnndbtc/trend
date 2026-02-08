@@ -10,6 +10,10 @@ class Topic(BaseModel):
     url: str
     timestamp: datetime
     metrics: Dict = {}
+    language: str = 'en'
+    content: str = ''
+    title_summary: str = ''
+    full_summary: str = ''
 
 
 class Trend(BaseModel):
