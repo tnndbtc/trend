@@ -51,6 +51,7 @@ show_menu() {
     echo -e "${GREEN}1)${NC} Build and start container"
     echo -e "${GREEN}2)${NC} Collect trends"
     echo -e "${GREEN}3)${NC} Run database migrations"
+    echo -e "${GREEN}4)${NC} Clean old data"
     echo -e "${RED}0)${NC} Exit"
     echo ""
     echo -n "Select an option: "
@@ -187,30 +188,51 @@ collect_trends() {
     echo -e "${GREEN}✅ Container is running${NC}"
     echo ""
 
-    # Prompt for max trends
-    echo -e "${BLUE}How many trends to summarize?${NC}"
-    echo -e "  ${YELLOW}(Higher numbers = more comprehensive but slower and more API credits)${NC}"
-    echo -n "Max trends (default: 20): "
-    read max_trends
+    # Prompt for number of topics (clusters)
+    echo -e "${BLUE}How many topic clusters to generate?${NC}"
+    echo -e "  ${YELLOW}(Topic clusters group similar posts together)${NC}"
+    echo -n "Number of topics (default: 10): "
+    read number_of_topics
 
     # Use default if empty
-    if [ -z "$max_trends" ]; then
-        max_trends=20
+    if [ -z "$number_of_topics" ]; then
+        number_of_topics=10
     fi
 
     # Validate it's a number
-    if ! [[ "$max_trends" =~ ^[0-9]+$ ]]; then
-        echo -e "${RED}❌ Invalid number. Using default: 20${NC}"
-        max_trends=20
+    if ! [[ "$number_of_topics" =~ ^[0-9]+$ ]]; then
+        echo -e "${RED}❌ Invalid number. Using default: 10${NC}"
+        number_of_topics=10
+    fi
+
+    echo ""
+
+    # Prompt for max posts per source
+    echo -e "${BLUE}How many posts from each source (Reddit, Hacker News, Google News)?${NC}"
+    echo -e "  ${YELLOW}(This will select top N posts from EACH source)${NC}"
+    echo -n "Max posts per source (default: 5): "
+    read max_posts_per_source
+
+    # Use default if empty
+    if [ -z "$max_posts_per_source" ]; then
+        max_posts_per_source=5
+    fi
+
+    # Validate it's a number
+    if ! [[ "$max_posts_per_source" =~ ^[0-9]+$ ]]; then
+        echo -e "${RED}❌ Invalid number. Using default: 5${NC}"
+        max_posts_per_source=5
     fi
 
     echo ""
     echo -e "${BLUE}🚀 Starting trend collection...${NC}"
-    echo -e "${BLUE}   Max trends: $max_trends${NC}"
+    echo -e "${BLUE}   Number of topics: $number_of_topics${NC}"
+    echo -e "${BLUE}   Max posts per source: $max_posts_per_source${NC}"
+    echo -e "${BLUE}   Total posts: up to $((3 * max_posts_per_source)) (from 3 sources)${NC}"
     echo ""
 
     # Run the collect_trends command
-    if ${DOCKER_COMPOSE} exec web python manage.py collect_trends --max-trends "$max_trends"; then
+    if ${DOCKER_COMPOSE} exec web python manage.py collect_trends --number-of-topics "$number_of_topics" --max-posts-per-source "$max_posts_per_source"; then
         echo ""
         echo -e "${GREEN}✅ Trend collection completed successfully!${NC}"
         echo ""
@@ -260,6 +282,78 @@ run_migrations() {
     fi
 }
 
+# Function to clean old data
+clean_old_data() {
+    echo ""
+    echo -e "${BLUE}=================================================="
+    echo "  Clean Old Data"
+    echo "==================================================${NC}"
+    echo ""
+
+    # Check if container is running
+    if ! ${DOCKER_COMPOSE} ps | grep -q "Up"; then
+        echo -e "${RED}❌ Container is not running${NC}"
+        echo "Please start the container first (Option 1)"
+        return 1
+    fi
+
+    echo -e "${GREEN}✅ Container is running${NC}"
+    echo ""
+    echo -e "${BLUE}Data Retention Policy${NC}"
+    echo "This will delete old collection runs to free up disk space."
+    echo ""
+    echo -e "${YELLOW}How many days of data to keep?${NC}"
+    echo "  • Enter 0 to DELETE ALL DATA"
+    echo "  • Enter 1 to keep only the last 24 hours"
+    echo "  • Enter N to keep only the last N days"
+    echo -n "Days to keep (default: 30): "
+    read retention_days
+
+    # Use default if empty
+    if [ -z "$retention_days" ]; then
+        retention_days=30
+    fi
+
+    # Validate it's a number
+    if ! [[ "$retention_days" =~ ^[0-9]+$ ]]; then
+        echo -e "${RED}❌ Invalid number. Using default: 30${NC}"
+        retention_days=30
+    fi
+
+    echo ""
+    echo -e "${BLUE}🔍 Running dry-run to preview...${NC}"
+    echo ""
+
+    # First run in dry-run mode to show what would be deleted
+    ${DOCKER_COMPOSE} exec web python manage.py clean_old_data --days "$retention_days" --dry-run
+
+    echo ""
+    echo -e "${YELLOW}⚠️  Proceed with deletion?${NC}"
+    echo -n "Type 'yes' to confirm: "
+    read confirmation
+
+    if [ "$confirmation" != "yes" ]; then
+        echo -e "${BLUE}ℹ️  Cleanup cancelled${NC}"
+        return 0
+    fi
+
+    echo ""
+    echo -e "${BLUE}🗑️  Deleting old data...${NC}"
+    echo ""
+
+    # Run actual cleanup
+    if ${DOCKER_COMPOSE} exec web python manage.py clean_old_data --days "$retention_days"; then
+        echo ""
+        echo -e "${GREEN}✅ Cleanup completed successfully!${NC}"
+        return 0
+    else
+        echo ""
+        echo -e "${RED}❌ Cleanup failed${NC}"
+        echo "Check the error messages above"
+        return 1
+    fi
+}
+
 # Main menu loop
 while true; do
     show_menu
@@ -296,6 +390,16 @@ while true; do
                 read -p "Press Enter to return to menu..."
             fi
             ;;
+        4)
+            if clean_old_data; then
+                echo ""
+                read -p "Press Enter to return to menu..."
+            else
+                echo ""
+                echo -e "${RED}❌ Cleanup failed. Please check the errors above.${NC}"
+                read -p "Press Enter to return to menu..."
+            fi
+            ;;
         0)
             echo ""
             echo -e "${GREEN}👋 Goodbye!${NC}"
@@ -304,7 +408,7 @@ while true; do
             ;;
         *)
             echo ""
-            echo -e "${RED}❌ Invalid option. Please select 1, 2, 3, or 0.${NC}"
+            echo -e "${RED}❌ Invalid option. Please select 1, 2, 3, 4, or 0.${NC}"
             sleep 2
             ;;
     esac

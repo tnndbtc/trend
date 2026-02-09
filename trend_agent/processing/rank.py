@@ -1,3 +1,31 @@
+def score_topic(topic):
+    """
+    Calculate engagement score for a single topic based on metrics.
+
+    Args:
+        topic: Topic object
+
+    Returns:
+        Engagement score
+    """
+    return (topic.metrics.get("upvotes", 0) +
+            topic.metrics.get("comments", 0) +
+            topic.metrics.get("score", 0))
+
+
+def rank_topics(topics):
+    """
+    Rank topics by their engagement scores in descending order.
+
+    Args:
+        topics: List of Topic objects
+
+    Returns:
+        Sorted list of topics (highest score first)
+    """
+    return sorted(topics, key=score_topic, reverse=True)
+
+
 def score_cluster(cluster):
     """
     Calculate engagement score for a cluster based on metrics.

@@ -9,8 +9,8 @@ from trends_viewer.models import CollectionRun, CollectedTopic, TrendCluster
 from collectors import reddit, hackernews, google_news
 from processing.normalize import normalize
 from processing.deduplicate import deduplicate
-from processing.cluster import cluster
-from processing.rank import rank_clusters
+from processing.cluster import cluster as cluster_topics
+from processing.rank import rank_clusters, rank_topics
 from processing.content_fetcher import fetch_content_for_topic
 from llm.summarizer import summarize, summarize_single_topic, summarize_topics_batch
 
@@ -20,14 +20,21 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--max-trends',
+            '--number-of-topics',
             type=int,
-            default=20,
-            help='Maximum number of trends to summarize (default: 20)'
+            default=10,
+            help='Number of topic clusters to generate (default: 10)'
+        )
+        parser.add_argument(
+            '--max-posts-per-source',
+            type=int,
+            default=5,
+            help='Maximum posts to collect from each source (Reddit, HN, Google News) (default: 5)'
         )
 
     def handle(self, *args, **options):
-        max_trends = options['max_trends']
+        number_of_topics = options['number_of_topics']
+        max_posts_per_source = options['max_posts_per_source']
         start_time = time.time()
 
         # Create collection run record
@@ -40,7 +47,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f'Started collection run #{collection_run.id}'))
 
             # Run the async collection pipeline
-            asyncio.run(self.run_pipeline(collection_run, max_trends))
+            asyncio.run(self.run_pipeline(collection_run, number_of_topics, max_posts_per_source))
 
             # Calculate duration
             duration = time.time() - start_time
@@ -61,7 +68,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f'❌ Collection failed: {str(e)}'))
             raise
 
-    async def run_pipeline(self, collection_run, max_trends):
+    async def run_pipeline(self, collection_run, number_of_topics, max_posts_per_source):
         """Run the full trend collection and analysis pipeline."""
 
         # Step 1: Collect from all sources
@@ -84,28 +91,73 @@ class Command(BaseCommand):
         unique_topics = deduplicate(normalized)
         self.stdout.write(f'   {len(unique_topics)} unique topics')
 
-        # Step 4: Fetch full content for all topics
+        # Step 4: Select top N posts from each source
+        self.stdout.write(f'📊 Selecting top {max_posts_per_source} posts from each source...')
+
+        # Group topics by source
+        topics_by_source = {}
+        for topic in unique_topics:
+            source = topic.source
+            if source not in topics_by_source:
+                topics_by_source[source] = []
+            topics_by_source[source].append(topic)
+
+        # For each source, rank and select top N
+        selected_topics = []
+        for source, topics in topics_by_source.items():
+            ranked = rank_topics(topics)
+            selected = ranked[:max_posts_per_source]
+            selected_topics.extend(selected)
+            self.stdout.write(f'   {source}: selected {len(selected)} posts')
+
+        self.stdout.write(f'   Total selected: {len(selected_topics)} posts from {len(topics_by_source)} sources')
+
+        # Step 5: Cluster the selected topics
+        self.stdout.write('🗂️  Clustering similar topics...')
+        clusters = cluster_topics(selected_topics)
+        self.stdout.write(f'   Created {len(clusters)} clusters')
+
+        # Step 6: Rank clusters by engagement
+        self.stdout.write('📊 Ranking clusters by importance...')
+        ranked_clusters = rank_clusters(clusters)
+
+        # Step 7: Keep top N clusters (or all if N >= cluster count)
+        clusters_to_keep = min(number_of_topics, len(ranked_clusters))
+        # Actually, keep ALL clusters since we already filtered by source
+        # This ensures all source-selected topics are displayed
+        self.stdout.write(f'📦 Keeping all {len(ranked_clusters)} clusters (from {len(selected_topics)} source-filtered topics)...')
+        top_clusters = ranked_clusters  # Keep all clusters
+        self.stdout.write(f'   Selected {len(top_clusters)} clusters for display')
+
+        # Step 7: Fetch full content for selected topics
         self.stdout.write('📥 Fetching full content for topics...')
-        for idx, topic in enumerate(unique_topics, 1):
+        for idx, topic in enumerate(selected_topics, 1):
             if idx % 10 == 0:
-                self.stdout.write(f'   Fetched {idx}/{len(unique_topics)} topics...')
+                self.stdout.write(f'   Fetched {idx}/{len(selected_topics)} topics...')
             topic.content = await fetch_content_for_topic(topic)
 
-        self.stdout.write(f'✅ Content fetched for {len(unique_topics)} topics')
+        self.stdout.write(f'✅ Content fetched for {len(selected_topics)} topics')
 
-        # Step 4b: Batch summarize topics (much more efficient!)
+        # Step 8: Batch summarize topics (much more efficient!)
         self.stdout.write('🤖 Batch summarizing topics...')
         BATCH_SIZE = 15  # Process 15 topics per API call
-        total_batches = (len(unique_topics) + BATCH_SIZE - 1) // BATCH_SIZE
+        total_batches = (len(selected_topics) + BATCH_SIZE - 1) // BATCH_SIZE
 
-        for batch_idx in range(0, len(unique_topics), BATCH_SIZE):
-            batch = unique_topics[batch_idx:batch_idx + BATCH_SIZE]
+        for batch_idx in range(0, len(selected_topics), BATCH_SIZE):
+            batch = selected_topics[batch_idx:batch_idx + BATCH_SIZE]
             batch_num = (batch_idx // BATCH_SIZE) + 1
             self.stdout.write(f'   Processing batch {batch_num}/{total_batches} ({len(batch)} topics)...')
 
             try:
                 # Batch summarize all topics in this batch
                 results = await summarize_topics_batch(batch)
+
+                # Handle case where results is not a list or is empty
+                if not isinstance(results, list):
+                    raise ValueError(f"Expected list of results, got {type(results)}")
+
+                if len(results) != len(batch):
+                    raise ValueError(f"Result count mismatch: expected {len(batch)}, got {len(results)}")
 
                 # Assign results back to topics
                 for topic, result in zip(batch, results):
@@ -132,12 +184,12 @@ class Command(BaseCommand):
                         topic.title_summary = topic.title
                         topic.full_summary = f"[{topic.url}] {topic.title}"
 
-        self.stdout.write(f'✅ Batch summarization complete for {len(unique_topics)} topics')
+        self.stdout.write(f'✅ Batch summarization complete for {len(selected_topics)} topics')
 
-        # Step 5: Save topics to database
+        # Step 9: Save topics to database
         self.stdout.write('💾 Saving topics to database...')
         saved_topics = []
-        for topic in unique_topics:
+        for topic in selected_topics:
             db_topic = await sync_to_async(CollectedTopic.objects.create)(
                 collection_run=collection_run,
                 title=topic.title,
@@ -158,19 +210,10 @@ class Command(BaseCommand):
         collection_run.topics_count = len(saved_topics)
         await sync_to_async(collection_run.save)()
 
-        # Step 6: Cluster similar topics
-        self.stdout.write('🗂️  Clustering similar topics...')
-        clusters = cluster(unique_topics)
-        self.stdout.write(f'   Created {len(clusters)} clusters')
+        # Step 10: Generate cluster summaries for top clusters
+        self.stdout.write(f'🤖 Generating cluster summaries for top {number_of_topics} topic clusters...')
 
-        # Step 7: Rank clusters
-        self.stdout.write('📊 Ranking by importance...')
-        ranked = rank_clusters(clusters)
-
-        # Step 8: Summarize top trends (cluster-level)
-        self.stdout.write(f'🤖 Generating cluster summaries for top {max_trends} trends...')
-
-        for rank_idx, topic_cluster in enumerate(ranked[:max_trends], 1):
+        for rank_idx, topic_cluster in enumerate(top_clusters, 1):
             self.stdout.write(f'   Processing trend #{rank_idx}...')
 
             # Generate summary using Claude
@@ -211,7 +254,7 @@ class Command(BaseCommand):
                     db_topic.cluster = db_cluster
                     await sync_to_async(db_topic.save)()
 
-        collection_run.clusters_count = min(len(ranked), max_trends)
+        collection_run.clusters_count = len(top_clusters)
         await sync_to_async(collection_run.save)()
 
         self.stdout.write(self.style.SUCCESS('✨ Analysis complete!'))
