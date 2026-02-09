@@ -108,11 +108,15 @@ async def fetch_content_for_topic(topic) -> str:
     if topic.source == 'reddit' and topic.description:
         return strip_html_tags(topic.description)
 
-    # For other sources, try to fetch the full article
+    # Don't scrape social media platform URLs - they contain navigation boilerplate
+    # Only fetch external article content
     if topic.url:
-        content = await fetch_url_content(topic.url)
-        if content:
-            return content
+        # Skip reddit.com, news.ycombinator.com, news.google.com, and other platform URLs
+        skip_domains = ['reddit.com', 'news.ycombinator.com', 'twitter.com', 'x.com', 'news.google.com']
+        if not any(domain in topic.url for domain in skip_domains):
+            content = await fetch_url_content(topic.url)
+            if content:
+                return content
 
     # Fallback to description if available (strip HTML tags)
     if topic.description:

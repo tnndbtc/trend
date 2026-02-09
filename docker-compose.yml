@@ -9,6 +9,8 @@ services:
     ports:
       - "11800:8000"
     volumes:
+      # Mount entire project directory for live code updates
+      - .:/app
       # Persist database in subdirectory to avoid overwriting app files
       - ./data/db:/app/web_interface/db
       # Cache for sentence-transformers models
