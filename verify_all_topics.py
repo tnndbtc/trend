@@ -21,7 +21,7 @@ topics = CollectedTopic.objects.filter(collection_run=run).order_by('cluster__ra
 
 for idx, topic in enumerate(topics, 1):
     cluster_num = topic.cluster.rank if topic.cluster else 'N/A'
-    print(f'{idx}. Cluster #{cluster_num} - {topic.title[:50]}...')
+    print(f'{idx}. #{cluster_num} - {topic.title[:50]}...')
     print(f'   Title Summary: {"✓" if topic.title_summary else "✗"} ({len(topic.title_summary or "")} chars)')
     print(f'   Full Summary:  {"✓" if topic.full_summary else "✗"} ({len(topic.full_summary or "")} chars)')
     print(f'   Content:       {"✓" if topic.content else "✗"} ({len(topic.content or "")} chars)')

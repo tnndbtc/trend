@@ -49,7 +49,7 @@ show_menu() {
     echo "==================================================${NC}"
     echo ""
     echo -e "${GREEN}1)${NC} Build and start container"
-    echo -e "${GREEN}2)${NC} Collect trends"
+    echo -e "${GREEN}2)${NC} Collect trends (includes category management)"
     echo -e "${GREEN}3)${NC} Run database migrations"
     echo -e "${GREEN}4)${NC} Clean old data"
     echo -e "${RED}0)${NC} Exit"
@@ -158,7 +158,7 @@ build_and_start() {
     echo "  (Change these in .env.docker)"
     echo ""
     echo -e "${BLUE}📈 To collect trends, run:${NC}"
-    echo "  ${DOCKER_COMPOSE} exec web python manage.py collect_trends --max-trends 20"
+    echo "  ${DOCKER_COMPOSE} exec web python manage.py collect_trends --max-posts-per-category 5"
     echo ""
     echo -e "${BLUE}📋 Useful Commands:${NC}"
     echo "  View logs:     ${DOCKER_COMPOSE} logs -f"
@@ -188,51 +188,63 @@ collect_trends() {
     echo -e "${GREEN}✅ Container is running${NC}"
     echo ""
 
-    # Prompt for number of topics (clusters)
-    echo -e "${BLUE}How many topic clusters to generate?${NC}"
-    echo -e "  ${YELLOW}(Topic clusters group similar posts together)${NC}"
-    echo -n "Number of topics (default: 10): "
-    read number_of_topics
-
-    # Use default if empty
-    if [ -z "$number_of_topics" ]; then
-        number_of_topics=10
-    fi
-
-    # Validate it's a number
-    if ! [[ "$number_of_topics" =~ ^[0-9]+$ ]]; then
-        echo -e "${RED}❌ Invalid number. Using default: 10${NC}"
-        number_of_topics=10
-    fi
+    # Show current categories
+    echo -e "${BLUE}📂 Current Categories:${NC}"
+    ${DOCKER_COMPOSE} exec web python -c "
+from categories import list_categories
+categories = list_categories()
+for i, cat in enumerate(categories, 1):
+    print(f'  {i}. {cat}')
+print(f'\nTotal: {len(categories)} categories')
+" 2>/dev/null
 
     echo ""
+    echo -e "${BLUE}ℹ️  The system will create one cluster for each category${NC}"
+    echo ""
+    echo -e "${YELLOW}Would you like to manage categories before collecting trends?${NC}"
+    echo -e "${GREEN}1)${NC} Yes, manage categories first"
+    echo -e "${GREEN}2)${NC} No, proceed with current categories"
+    echo ""
+    echo -n "Select an option (default: 2): "
+    read manage_choice
 
-    # Prompt for max posts per source
-    echo -e "${BLUE}How many posts from each source (Reddit, Hacker News, Google News)?${NC}"
-    echo -e "  ${YELLOW}(This will select top N posts from EACH source)${NC}"
-    echo -n "Max posts per source (default: 5): "
-    read max_posts_per_source
+    # Handle category management if requested
+    if [ "$manage_choice" = "1" ]; then
+        manage_categories_submenu
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}❌ Returning to main menu${NC}"
+            return 1
+        fi
+        echo ""
+        echo -e "${GREEN}✅ Categories configured. Proceeding with trend collection...${NC}"
+        echo ""
+    fi
+
+    # Prompt for max posts per category
+    echo -e "${BLUE}How many posts to keep for EACH category?${NC}"
+    echo -e "  ${YELLOW}(The system will cluster all posts, then keep top N per category)${NC}"
+    echo -n "Max posts per category (default: 5): "
+    read max_posts_per_category
 
     # Use default if empty
-    if [ -z "$max_posts_per_source" ]; then
-        max_posts_per_source=5
+    if [ -z "$max_posts_per_category" ]; then
+        max_posts_per_category=5
     fi
 
     # Validate it's a number
-    if ! [[ "$max_posts_per_source" =~ ^[0-9]+$ ]]; then
+    if ! [[ "$max_posts_per_category" =~ ^[0-9]+$ ]]; then
         echo -e "${RED}❌ Invalid number. Using default: 5${NC}"
-        max_posts_per_source=5
+        max_posts_per_category=5
     fi
 
     echo ""
     echo -e "${BLUE}🚀 Starting trend collection...${NC}"
-    echo -e "${BLUE}   Number of topics: $number_of_topics${NC}"
-    echo -e "${BLUE}   Max posts per source: $max_posts_per_source${NC}"
-    echo -e "${BLUE}   Total posts: up to $((3 * max_posts_per_source)) (from 3 sources)${NC}"
+    echo -e "${BLUE}   Max posts per category: $max_posts_per_category${NC}"
+    echo -e "${BLUE}   The system will collect from all sources and distribute posts across categories${NC}"
     echo ""
 
     # Run the collect_trends command
-    if ${DOCKER_COMPOSE} exec web python manage.py collect_trends --number-of-topics "$number_of_topics" --max-posts-per-source "$max_posts_per_source"; then
+    if ${DOCKER_COMPOSE} exec web python manage.py collect_trends --max-posts-per-category "$max_posts_per_category"; then
         echo ""
         echo -e "${GREEN}✅ Trend collection completed successfully!${NC}"
         echo ""
@@ -246,6 +258,124 @@ collect_trends() {
         echo "  ${DOCKER_COMPOSE} logs -f"
         return 1
     fi
+}
+
+# Function to manage categories (submenu)
+manage_categories_submenu() {
+    echo ""
+    echo -e "${BLUE}=================================================="
+    echo "  Manage Categories"
+    echo "==================================================${NC}"
+
+    while true; do
+        echo ""
+        echo -e "${BLUE}Current Categories:${NC}"
+        # Use Python to show live category list
+        ${DOCKER_COMPOSE} exec web python -c "
+from categories import list_categories
+categories = list_categories()
+for i, cat in enumerate(categories, 1):
+    print(f'  {i}. {cat}')
+print(f'\nTotal: {len(categories)} categories')
+" 2>/dev/null
+
+        echo ""
+        echo -e "${GREEN}1)${NC} Add category"
+        echo -e "${GREEN}2)${NC} Remove category"
+        echo -e "${GREEN}3)${NC} Reset to defaults"
+        echo -e "${RED}0)${NC} Done managing categories"
+        echo ""
+        echo -n "Select an option: "
+        read cat_choice
+
+        case $cat_choice in
+            1)
+                echo ""
+                echo -n "Enter new category name: "
+                read new_category
+                if [ -n "$new_category" ]; then
+                    echo ""
+                    echo -e "${BLUE}Adding category: $new_category${NC}"
+                    ${DOCKER_COMPOSE} exec web python -c "
+from categories import add_category
+success, message = add_category('$new_category')
+print(message)
+exit(0 if success else 1)
+"
+                    if [ $? -eq 0 ]; then
+                        echo -e "${GREEN}✅ Category added successfully${NC}"
+                    else
+                        echo -e "${RED}❌ Failed to add category${NC}"
+                    fi
+                else
+                    echo -e "${RED}❌ Category name cannot be empty${NC}"
+                fi
+                ;;
+            2)
+                echo ""
+                echo -n "Enter category name to remove: "
+                read remove_category
+                if [ -n "$remove_category" ]; then
+                    echo ""
+                    echo -e "${YELLOW}⚠️  Are you sure you want to remove '$remove_category'?${NC}"
+                    echo -n "Type 'yes' to confirm: "
+                    read confirm
+                    if [ "$confirm" = "yes" ]; then
+                        echo -e "${BLUE}Removing category: $remove_category${NC}"
+                        ${DOCKER_COMPOSE} exec web python -c "
+from categories import remove_category
+success, message = remove_category('$remove_category')
+print(message)
+exit(0 if success else 1)
+"
+                        if [ $? -eq 0 ]; then
+                            echo -e "${GREEN}✅ Category removed successfully${NC}"
+                        else
+                            echo -e "${RED}❌ Failed to remove category${NC}"
+                        fi
+                    else
+                        echo -e "${BLUE}ℹ️  Removal cancelled${NC}"
+                    fi
+                else
+                    echo -e "${RED}❌ Category name cannot be empty${NC}"
+                fi
+                ;;
+            3)
+                echo ""
+                echo -e "${YELLOW}⚠️  This will reset categories to defaults:${NC}"
+                echo "  Technology, Politics, Entertainment, Sports, Science, Business, World News"
+                echo ""
+                echo -n "Type 'yes' to confirm: "
+                read confirm
+                if [ "$confirm" = "yes" ]; then
+                    echo -e "${BLUE}Resetting categories...${NC}"
+                    ${DOCKER_COMPOSE} exec web python -c "
+from categories import reset_to_defaults
+if reset_to_defaults():
+    print('✅ Categories reset to defaults')
+    exit(0)
+else:
+    print('❌ Failed to reset categories')
+    exit(1)
+"
+                    if [ $? -eq 0 ]; then
+                        echo -e "${GREEN}✅ Reset completed successfully${NC}"
+                    else
+                        echo -e "${RED}❌ Failed to reset categories${NC}"
+                    fi
+                else
+                    echo -e "${BLUE}ℹ️  Reset cancelled${NC}"
+                fi
+                ;;
+            0)
+                return 0
+                ;;
+            *)
+                echo -e "${RED}❌ Invalid option${NC}"
+                sleep 1
+                ;;
+        esac
+    done
 }
 
 # Function to run database migrations
@@ -408,7 +538,7 @@ while true; do
             ;;
         *)
             echo ""
-            echo -e "${RED}❌ Invalid option. Please select 1, 2, 3, 4, or 0.${NC}"
+            echo -e "${RED}❌ Invalid option. Please select 1-4, or 0.${NC}"
             sleep 2
             ;;
     esac

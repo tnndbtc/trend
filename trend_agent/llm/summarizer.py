@@ -122,27 +122,33 @@ Notes:
     return await call_llm_json(prompt)
 
 
-async def summarize(cluster):
+async def summarize(cluster, category_name=None):
     """
     Generate a summary for a cluster of related topics.
 
     Args:
         cluster: List of Topic objects
+        category_name: Optional category name for context (e.g., "Technology", "Politics")
 
     Returns:
         Summary text from LLM
     """
     text = "\n".join([t.title for t in cluster])
 
+    category_context = f"\nCategory: {category_name}" if category_name else ""
+
     prompt = f"""You are a professional trend analyst.
 
 Summarize the following cluster into:
-- Trend title
+- Title: Use exactly "{category_name if category_name else 'General'}" as the first line (do not add "Trends" or any other words)
 - 3 bullet key points
-- 2 sentence explanation
+- 2 sentence explanation{category_context}
 
 Text:
 {text}
+
+Note: These topics belong to the "{category_name}" category. The summary should reflect this context.
+IMPORTANT: The title must be exactly "{category_name}" without adding "Trends" or any other suffix.
 """
 
     return await call_llm(prompt)

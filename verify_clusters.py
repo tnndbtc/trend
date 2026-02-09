@@ -22,7 +22,7 @@ clusters = TrendCluster.objects.filter(collection_run=run).order_by('rank')
 
 print('Clusters and their topics:')
 for cluster in clusters:
-    print(f'\nCluster #{cluster.rank} - {cluster.title[:50]}...')
+    print(f'\n#{cluster.rank} - {cluster.title[:50]}...')
     topics = cluster.topics.all()
     print(f'  Topic count: {topics.count()}')
     for topic in topics:

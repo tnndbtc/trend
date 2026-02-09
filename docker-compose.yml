@@ -13,12 +13,15 @@ services:
       - ./data/db:/app/web_interface/db
       # Cache for sentence-transformers models
       - ./data/cache:/root/.cache
+      # Persist categories configuration
+      - ./data:/app/data
     env_file:
       - .env.docker
     environment:
       # Pass environment variables from host (takes precedence over .env.docker)
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
+      - MOCK_API=${MOCK_API:-1}
       # Python environment
       - PYTHONPATH=/app/trend_agent:/app
       - TRANSFORMERS_CACHE=/root/.cache/huggingface

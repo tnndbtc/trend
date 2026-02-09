@@ -22,4 +22,4 @@ print(f'Actual Cluster Count: {TrendCluster.objects.filter(collection_run=run).c
 print('\nTopics per cluster:')
 
 for cluster in TrendCluster.objects.filter(collection_run=run).order_by('rank'):
-    print(f'  Cluster #{cluster.rank}: {cluster.topics.count()} posts - "{cluster.title[:60]}"')
+    print(f'  #{cluster.rank}: {cluster.topics.count()} posts - "{cluster.title[:60]}"')

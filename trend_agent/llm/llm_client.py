@@ -85,29 +85,57 @@ async def call_llm(prompt):
     Returns:
         LLM's response text
     """
-    # ============================================================
-    # REAL API CALL - Using OpenAI
-    # ============================================================
-    response = client.chat.completions.create(
-        model=MODEL, max_tokens=1024, messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content
+    # Check if mock mode is enabled via environment variable
+    mock_mode = os.getenv('MOCK_API', '0') == '1'
 
-    # ============================================================
-    # MOCK MODE - FOR TESTING WITHOUT API CALLS (currently disabled)
-    # ============================================================
-    # print("\n" + "="*80)
-    # print("=== MOCK MODE: Would send to OpenAI API ===")
-    # print("="*80)
-    # print(f"Model: {MODEL}")
-    # print(f"Max Tokens: 1024")
-    # print(f"Prompt Preview (first 500 chars):\n{prompt[:500]}...")
-    # print("="*80)
-    #
-    # # MOCK RESPONSE (comment out when using real API)
-    # mock_response = "Mock LLM response for testing"
-    # print(f"=== MOCK MODE: Returning mock response ===\n{mock_response}\n" + "="*80 + "\n")
-    # return mock_response
+    # Log which mode is active
+    mode_status = "MOCK MODE ENABLED" if mock_mode else "REAL API MODE ENABLED"
+    print(f"\n{'='*80}")
+    print(f"📡 LLM Call Status: {mode_status} (MOCK_API={os.getenv('MOCK_API', '0')})")
+    print(f"{'='*80}")
+
+    if mock_mode:
+        # ============================================================
+        # MOCK MODE - FOR TESTING WITHOUT API CALLS
+        # ============================================================
+        print("🚫 Returning mock response (no API call)")
+        print(f"Model: {MODEL}")
+        print(f"Max Tokens: 1024")
+        print(f"Prompt Preview (first 500 chars):\n{prompt[:500]}...")
+        print("="*80)
+
+        # Extract category name from prompt if present
+        category_name = "General"
+        if "Category: " in prompt:
+            match = re.search(r'Category: ([^\n]+)', prompt)
+            if match:
+                category_name = match.group(1).strip()
+        elif 'category: ' in prompt.lower():
+            match = re.search(r'category: ([^\n]+)', prompt, re.IGNORECASE)
+            if match:
+                category_name = match.group(1).strip()
+
+        # Generate mock response that includes the category name
+        mock_response = f"""{category_name}
+• Mock trend point 1 related to {category_name}
+• Mock trend point 2 about recent developments
+• Mock trend point 3 highlighting key discussions
+
+This mock summary reflects trending topics in the {category_name} category. The analysis is based on recent social media discussions and news articles."""
+
+        print(f"✅ Mock response generated\n{mock_response[:200]}...\n" + "="*80 + "\n")
+        return mock_response
+    else:
+        # ============================================================
+        # REAL API CALL - Using OpenAI
+        # ============================================================
+        print("🌐 Calling OpenAI API...")
+        response = client.chat.completions.create(
+            model=MODEL, max_tokens=1024, messages=[{"role": "user", "content": prompt}]
+        )
+        print("✅ OpenAI API response received")
+        print("="*80 + "\n")
+        return response.choices[0].message.content
 
 
 async def call_llm_json(prompt, max_tokens=1024):
@@ -121,34 +149,43 @@ async def call_llm_json(prompt, max_tokens=1024):
     Returns:
         Parsed JSON object from LLM response
     """
-    # ============================================================
-    # REAL API CALL - Using OpenAI
-    # ============================================================
-    response = client.chat.completions.create(
-        model=MODEL,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"}
-    )
-    content = response.choices[0].message.content
-    return json.loads(content)
+    # Check if mock mode is enabled via environment variable
+    mock_mode = os.getenv('MOCK_API', '0') == '1'
 
-    # ============================================================
-    # MOCK MODE - FOR TESTING WITHOUT API CALLS (currently disabled)
-    # ============================================================
-    # print("\n" + "="*80)
-    # print("=== MOCK MODE: Would send to OpenAI API (JSON) ===")
-    # print("="*80)
-    # print(f"Model: {MODEL}")
-    # print(f"Max Tokens: {max_tokens}")
-    # print(f"Prompt Preview (first 800 chars):\n{prompt[:800]}...")
-    # print("="*80)
-    #
-    # # MOCK RESPONSE (comment out when using real API)
-    # mock_result = generate_mock_response(prompt)
-    # print(f"=== MOCK MODE: Returning mock JSON ===")
-    # print(f"Generated {len(mock_result) if isinstance(mock_result, list) else 1} mock summaries")
-    # if isinstance(mock_result, list) and len(mock_result) > 0:
-    #     print(f"Sample: {json.dumps(mock_result[0], indent=2)}")
-    # print("="*80 + "\n")
-    # return mock_result
+    # Log which mode is active
+    mode_status = "MOCK MODE ENABLED" if mock_mode else "REAL API MODE ENABLED"
+    print(f"\n{'='*80}")
+    print(f"📡 LLM Call (JSON) Status: {mode_status} (MOCK_API={os.getenv('MOCK_API', '0')})")
+    print(f"{'='*80}")
+
+    if mock_mode:
+        # ============================================================
+        # MOCK MODE - FOR TESTING WITHOUT API CALLS
+        # ============================================================
+        print("🚫 Returning mock JSON response (no API call)")
+        print(f"Model: {MODEL}")
+        print(f"Max Tokens: {max_tokens}")
+        print(f"Prompt Preview (first 800 chars):\n{prompt[:800]}...")
+        print("="*80)
+
+        mock_result = generate_mock_response(prompt)
+        print(f"✅ Mock JSON generated: {len(mock_result) if isinstance(mock_result, list) else 1} items")
+        if isinstance(mock_result, list) and len(mock_result) > 0:
+            print(f"Sample: {json.dumps(mock_result[0], indent=2)}")
+        print("="*80 + "\n")
+        return mock_result
+    else:
+        # ============================================================
+        # REAL API CALL - Using OpenAI
+        # ============================================================
+        print("🌐 Calling OpenAI API (JSON mode)...")
+        response = client.chat.completions.create(
+            model=MODEL,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        content = response.choices[0].message.content
+        print("✅ OpenAI API JSON response received")
+        print("="*80 + "\n")
+        return json.loads(content)

@@ -12,7 +12,8 @@ from processing.deduplicate import deduplicate
 from processing.cluster import cluster as cluster_topics
 from processing.rank import rank_clusters, rank_topics
 from processing.content_fetcher import fetch_content_for_topic
-from llm.summarizer import summarize, summarize_single_topic, summarize_topics_batch
+from llm.summarizer import summarize_single_topic, summarize_topics_batch
+from categories import load_categories
 
 
 class Command(BaseCommand):
@@ -20,22 +21,19 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--number-of-topics',
-            type=int,
-            default=10,
-            help='Number of topic clusters to generate (default: 10)'
-        )
-        parser.add_argument(
-            '--max-posts-per-source',
+            '--max-posts-per-category',
             type=int,
             default=5,
-            help='Maximum posts to collect from each source (Reddit, HN, Google News) (default: 5)'
+            help='Maximum posts to keep per category after clustering (default: 5)'
         )
 
     def handle(self, *args, **options):
-        number_of_topics = options['number_of_topics']
-        max_posts_per_source = options['max_posts_per_source']
+        max_posts_per_category = options['max_posts_per_category']
         start_time = time.time()
+
+        # Load categories from configuration
+        categories = load_categories()
+        self.stdout.write(f'Using {len(categories)} categories: {", ".join(categories)}')
 
         # Create collection run record
         collection_run = CollectionRun.objects.create(
@@ -47,7 +45,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f'Started collection run #{collection_run.id}'))
 
             # Run the async collection pipeline
-            asyncio.run(self.run_pipeline(collection_run, number_of_topics, max_posts_per_source))
+            asyncio.run(self.run_pipeline(collection_run, categories, max_posts_per_category))
 
             # Calculate duration
             duration = time.time() - start_time
@@ -68,7 +66,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f'❌ Collection failed: {str(e)}'))
             raise
 
-    async def run_pipeline(self, collection_run, number_of_topics, max_posts_per_source):
+    async def run_pipeline(self, collection_run, categories, max_posts_per_category):
         """Run the full trend collection and analysis pipeline."""
 
         # Step 1: Collect from all sources
@@ -91,43 +89,65 @@ class Command(BaseCommand):
         unique_topics = deduplicate(normalized)
         self.stdout.write(f'   {len(unique_topics)} unique topics')
 
-        # Step 4: Select top N posts from each source
-        self.stdout.write(f'📊 Selecting top {max_posts_per_source} posts from each source...')
-
-        # Group topics by source
-        topics_by_source = {}
-        for topic in unique_topics:
-            source = topic.source
-            if source not in topics_by_source:
-                topics_by_source[source] = []
-            topics_by_source[source].append(topic)
-
-        # For each source, rank and select top N
-        selected_topics = []
-        for source, topics in topics_by_source.items():
-            ranked = rank_topics(topics)
-            selected = ranked[:max_posts_per_source]
-            selected_topics.extend(selected)
-            self.stdout.write(f'   {source}: selected {len(selected)} posts')
-
-        self.stdout.write(f'   Total selected: {len(selected_topics)} posts from {len(topics_by_source)} sources')
-
-        # Step 5: Cluster the selected topics
-        self.stdout.write('🗂️  Clustering similar topics...')
-        clusters = cluster_topics(selected_topics)
+        # Step 4: Cluster ALL topics into categories first
+        self.stdout.write(f'🗂️  Clustering all topics into {len(categories)} categories...')
+        clusters, cluster_category_names = cluster_topics(unique_topics, categories)
         self.stdout.write(f'   Created {len(clusters)} clusters')
+        for i, (cat_name, cluster) in enumerate(zip(cluster_category_names, clusters), 1):
+            self.stdout.write(f'   {i}. {cat_name}: {len(cluster)} posts')
+
+        # Step 5: Deduplicate within each category and select top N posts
+        self.stdout.write(f'📊 Deduplicating and selecting top {max_posts_per_category} posts from each category...')
+
+        selected_clusters = []
+        selected_category_names = []
+        total_selected = 0
+
+        for cluster, cat_name in zip(clusters, cluster_category_names):
+            # First, deduplicate similar posts within this category
+            # Use lower threshold (0.80 = 80% similarity) to catch posts about same topic
+            deduplicated_cluster = deduplicate(cluster, threshold=0.80, debug=False)
+            self.stdout.write(f'   {cat_name}: {len(cluster)} posts → {len(deduplicated_cluster)} after dedup')
+
+            # Rank topics in this cluster by engagement
+            ranked = rank_topics(deduplicated_cluster)
+            # Select top N posts from this category
+            selected = ranked[:max_posts_per_category]
+
+            if selected:  # Only keep non-empty clusters
+                selected_clusters.append(selected)
+                selected_category_names.append(cat_name)
+                total_selected += len(selected)
+                self.stdout.write(f'   {cat_name}: selected {len(selected)} posts')
+
+        # Flatten selected topics for content fetching and summarization
+        selected_topics = []
+        for cluster in selected_clusters:
+            selected_topics.extend(cluster)
+
+        self.stdout.write(f'   Total selected: {total_selected} posts across {len(selected_clusters)} categories')
+
+        # Update cluster references for subsequent steps
+        clusters = selected_clusters
+        cluster_category_names = selected_category_names
 
         # Step 6: Rank clusters by engagement
         self.stdout.write('📊 Ranking clusters by importance...')
-        ranked_clusters = rank_clusters(clusters)
+        # Pair clusters with their category names for ranking
+        clusters_with_categories = list(zip(clusters, cluster_category_names))
+        ranked_clusters_raw = rank_clusters(clusters)
+        # Re-pair ranked clusters with their original category names
+        ranked_clusters = []
+        for ranked_cluster in ranked_clusters_raw:
+            # Find the category name for this cluster
+            for orig_cluster, cat_name in clusters_with_categories:
+                if orig_cluster is ranked_cluster:
+                    ranked_clusters.append((ranked_cluster, cat_name))
+                    break
 
-        # Step 7: Keep top N clusters (or all if N >= cluster count)
-        clusters_to_keep = min(number_of_topics, len(ranked_clusters))
-        # Actually, keep ALL clusters since we already filtered by source
-        # This ensures all source-selected topics are displayed
-        self.stdout.write(f'📦 Keeping all {len(ranked_clusters)} clusters (from {len(selected_topics)} source-filtered topics)...')
-        top_clusters = ranked_clusters  # Keep all clusters
-        self.stdout.write(f'   Selected {len(top_clusters)} clusters for display')
+        # Keep ALL category clusters
+        self.stdout.write(f'📦 Using all {len(ranked_clusters)} category clusters')
+        top_clusters = ranked_clusters
 
         # Step 7: Fetch full content for selected topics
         self.stdout.write('📥 Fetching full content for topics...')
@@ -210,18 +230,17 @@ class Command(BaseCommand):
         collection_run.topics_count = len(saved_topics)
         await sync_to_async(collection_run.save)()
 
-        # Step 10: Generate cluster summaries for top clusters
-        self.stdout.write(f'🤖 Generating cluster summaries for top {number_of_topics} topic clusters...')
+        # Step 10: Create category clusters (without AI-generated summaries)
+        self.stdout.write(f'📦 Creating {len(top_clusters)} category clusters...')
 
-        for rank_idx, topic_cluster in enumerate(top_clusters, 1):
-            self.stdout.write(f'   Processing trend #{rank_idx}...')
+        for rank_idx, (topic_cluster, category_name) in enumerate(top_clusters, 1):
+            self.stdout.write(f'   Creating cluster #{rank_idx}: {category_name}...')
 
-            # Generate summary using Claude
-            summary = await summarize(topic_cluster)
+            # Use category name directly as title (no API call needed)
+            trend_title = category_name
 
-            # Extract title from summary (first line)
-            summary_lines = summary.strip().split('\n')
-            trend_title = summary_lines[0] if summary_lines else f"Trend {rank_idx}"
+            # No category summary - leave empty
+            summary = ""
 
             # Calculate cluster score
             score = sum([
