@@ -1,0 +1,21 @@
+# ============================================================================
+# Storage Layer Dependencies
+# ============================================================================
+# These are the Python packages required for the storage layer implementations
+
+# PostgreSQL async driver
+asyncpg>=0.29.0
+
+# Qdrant vector database client
+qdrant-client>=1.7.0
+
+# Redis async client
+redis[hiredis]>=5.0.1
+
+# Testing dependencies
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# Utilities
+pydantic>=2.0.0
+python-dotenv>=1.0.0
