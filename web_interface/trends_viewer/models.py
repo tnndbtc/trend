@@ -27,11 +27,7 @@ class CollectedTopic(models.Model):
     collection_run = models.ForeignKey(CollectionRun, on_delete=models.CASCADE, related_name='topics')
     title = models.CharField(max_length=500)
     description = models.TextField(blank=True)
-    source = models.CharField(max_length=50, choices=[
-        ('reddit', 'Reddit'),
-        ('hackernews', 'Hacker News'),
-        ('google_news', 'Google News'),
-    ])
+    source = models.CharField(max_length=50)  # No choices constraint - sources discovered dynamically
     url = models.URLField(max_length=1000)
     timestamp = models.DateTimeField()
 

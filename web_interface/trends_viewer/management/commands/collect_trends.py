@@ -6,14 +6,74 @@ from asgiref.sync import sync_to_async
 from trends_viewer.models import CollectionRun, CollectedTopic, TrendCluster
 
 # Import trend_agent modules
-from collectors import reddit, hackernews, google_news
+from collectors import get_all_collectors
 from processing.normalize import normalize
 from processing.deduplicate import deduplicate
 from processing.cluster import cluster as cluster_topics
-from processing.rank import rank_clusters, rank_topics
+from processing.rank import rank_topics, rank_clusters
 from processing.content_fetcher import fetch_content_for_topic
 from llm.summarizer import summarize_single_topic, summarize_topics_batch
 from categories import load_categories
+from config import is_source_diversity_enabled, get_max_percentage_per_source
+
+
+def apply_source_diversity_limit(ranked_topics, max_total, max_percentage_per_source=0.20):
+    """
+    Apply source diversity limiting to ensure balanced representation.
+
+    Limits each source to a maximum percentage of total selections using round-robin
+    selection across sources to maintain ranking quality while enforcing diversity.
+
+    Args:
+        ranked_topics: List of topics already sorted by rank (best first)
+        max_total: Maximum number of topics to select
+        max_percentage_per_source: Maximum fraction each source can contribute (0.0-1.0)
+
+    Returns:
+        List of selected topics with source diversity enforced
+    """
+    if not ranked_topics:
+        return []
+
+    # Calculate maximum topics per source
+    max_per_source = max(1, int(max_total * max_percentage_per_source))
+
+    # Group topics by source while preserving their rank order
+    by_source = {}
+    for topic in ranked_topics:
+        source = topic.source
+        if source not in by_source:
+            by_source[source] = []
+        by_source[source].append(topic)
+
+    # Round-robin selection across sources to respect both ranking and diversity
+    selected = []
+    source_counts = {source: 0 for source in by_source.keys()}
+
+    # Keep selecting until we hit the limit or run out of topics
+    position = 0
+    while len(selected) < max_total:
+        added_any = False
+
+        # Try to add one topic from each source at this position
+        for source in sorted(by_source.keys()):  # Sort for deterministic ordering
+            # Check if this source has topics left and hasn't hit its limit
+            if source_counts[source] < max_per_source and position < len(by_source[source]):
+                selected.append(by_source[source][position])
+                source_counts[source] += 1
+                added_any = True
+
+                if len(selected) >= max_total:
+                    break
+
+        # If no topics were added this round, move to next position
+        if not added_any:
+            position += 1
+            # If we've exhausted all positions, break
+            if all(position >= len(topics) for topics in by_source.values()):
+                break
+
+    return selected
 
 
 class Command(BaseCommand):
@@ -71,12 +131,23 @@ class Command(BaseCommand):
 
         # Step 1: Collect from all sources
         self.stdout.write('🔍 Collecting trending topics...')
-        sources = [reddit.fetch(), hackernews.fetch(), google_news.fetch()]
-        results = await asyncio.gather(*sources)
 
+        # Get all registered collectors
+        collectors = get_all_collectors()
+        self.stdout.write(f'   Using {len(collectors)} collectors: {", ".join(collectors.keys())}')
+
+        # Execute all collector fetch functions in parallel
+        sources = [collector() for collector in collectors.values()]
+        results = await asyncio.gather(*sources, return_exceptions=True)
+
+        # Collect topics, logging any collectors that failed
         raw_topics = []
-        for r in results:
-            raw_topics.extend(r)
+        for idx, result in enumerate(results):
+            if isinstance(result, Exception):
+                collector_name = list(collectors.keys())[idx]
+                self.stdout.write(f'   ⚠️  Collector \'{collector_name}\' failed: {result}')
+            else:
+                raw_topics.extend(result)
 
         self.stdout.write(f'   Collected {len(raw_topics)} raw topics')
 
@@ -105,20 +176,33 @@ class Command(BaseCommand):
 
         for cluster, cat_name in zip(clusters, cluster_category_names):
             # First, deduplicate similar posts within this category
-            # Use lower threshold (0.80 = 80% similarity) to catch posts about same topic
-            deduplicated_cluster = deduplicate(cluster, threshold=0.80, debug=False)
+            # Use threshold of 0.88 (88% similarity) to remove duplicates while preserving topically-similar distinct posts
+            deduplicated_cluster = deduplicate(cluster, threshold=0.88, debug=False)
             self.stdout.write(f'   {cat_name}: {len(cluster)} posts → {len(deduplicated_cluster)} after dedup')
 
             # Rank topics in this cluster by engagement
             ranked = rank_topics(deduplicated_cluster)
-            # Select top N posts from this category
-            selected = ranked[:max_posts_per_category]
+
+            # Apply source diversity limiting if enabled
+            if is_source_diversity_enabled():
+                max_pct = get_max_percentage_per_source()
+                selected = apply_source_diversity_limit(ranked, max_posts_per_category, max_pct)
+                self.stdout.write(f'   {cat_name}: applied source diversity limit ({int(max_pct*100)}% per source)')
+            else:
+                # No diversity limiting - use simple top N selection
+                selected = ranked[:max_posts_per_category]
 
             if selected:  # Only keep non-empty clusters
                 selected_clusters.append(selected)
                 selected_category_names.append(cat_name)
                 total_selected += len(selected)
-                self.stdout.write(f'   {cat_name}: selected {len(selected)} posts')
+
+                # Show source distribution for this category
+                source_counts = {}
+                for topic in selected:
+                    source_counts[topic.source] = source_counts.get(topic.source, 0) + 1
+                source_dist = ', '.join([f'{src}: {cnt}' for src, cnt in sorted(source_counts.items())])
+                self.stdout.write(f'   {cat_name}: selected {len(selected)} posts ({source_dist})')
 
         # Flatten selected topics for content fetching and summarization
         selected_topics = []

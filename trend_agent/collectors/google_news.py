@@ -2,24 +2,15 @@ import feedparser
 from datetime import datetime
 import sys
 import os
-from langdetect import detect, LangDetectException
 from bs4 import BeautifulSoup
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from models import Topic
+from .utils import detect_language, parse_rss_timestamp
+from . import register_collector
 
 RSS = "https://news.google.com/rss"
-
-
-def detect_language(text: str) -> str:
-    """Detect language of text, default to 'en' if detection fails."""
-    if not text or len(text.strip()) < 10:
-        return 'en'
-    try:
-        return detect(text)
-    except LangDetectException:
-        return 'en'
 
 
 def extract_first_article_info(summary_html: str) -> tuple:
@@ -97,9 +88,13 @@ async def fetch():
                 description=description,
                 source="google_news",
                 url=url,
-                timestamp=datetime(*e.published_parsed[:6]) if hasattr(e, "published_parsed") else datetime.now(),
+                timestamp=parse_rss_timestamp(e),
                 metrics={},
                 language=language,
             )
         )
     return topics
+
+
+# Register this collector
+register_collector('google_news', fetch)

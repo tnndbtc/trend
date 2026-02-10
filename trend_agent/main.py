@@ -1,5 +1,5 @@
 import asyncio
-from collectors import reddit, hackernews, google_news
+from collectors import get_all_collectors
 from processing.normalize import normalize
 from processing.deduplicate import deduplicate
 from processing.cluster import cluster
@@ -8,12 +8,23 @@ from llm.summarizer import summarize
 
 
 async def collect_all():
-    """Collect topics from all data sources."""
-    sources = [reddit.fetch(), hackernews.fetch(), google_news.fetch()]
-    results = await asyncio.gather(*sources)
+    """Collect topics from all data sources using the collector registry."""
+    # Get all registered collectors
+    collectors = get_all_collectors()
+
+    # Execute all collector fetch functions in parallel
+    sources = [collector() for collector in collectors.values()]
+    results = await asyncio.gather(*sources, return_exceptions=True)
+
+    # Collect topics, skipping any collectors that failed
     topics = []
-    for r in results:
-        topics.extend(r)
+    for idx, result in enumerate(results):
+        if isinstance(result, Exception):
+            collector_name = list(collectors.keys())[idx]
+            print(f"⚠️  Collector '{collector_name}' failed: {result}")
+        else:
+            topics.extend(result)
+
     return topics
 
 

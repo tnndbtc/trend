@@ -2,23 +2,14 @@ import aiohttp
 from datetime import datetime
 import sys
 import os
-from langdetect import detect, LangDetectException
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from models import Topic
+from .utils import detect_language
+from . import register_collector
 
 URL = "https://www.reddit.com/r/all/top.json?limit=50&t=day"
-
-
-def detect_language(text: str) -> str:
-    """Detect language of text, default to 'en' if detection fails."""
-    if not text or len(text.strip()) < 10:
-        return 'en'
-    try:
-        return detect(text)
-    except LangDetectException:
-        return 'en'
 
 
 async def fetch():
@@ -64,3 +55,7 @@ async def fetch():
             )
         )
     return topics
+
+
+# Register this collector
+register_collector('reddit', fetch)

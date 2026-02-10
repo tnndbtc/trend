@@ -1,0 +1,7 @@
+{
+  "source_diversity": {
+    "enabled": true,
+    "max_percentage_per_source": 0.40,
+    "description": "Limits each news source to maximum percentage of topics per category. Set to 0.40 (40%) to allow up to 2 topics per source in a 5-topic category, ensuring diversity while maintaining sufficient topic variety."
+  }
+}

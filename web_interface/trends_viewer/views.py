@@ -92,7 +92,10 @@ class TopicListView(ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['sources'] = ['reddit', 'hackernews', 'google_news']
+
+        # Get sources dynamically from collector registry
+        from collectors import list_collector_names
+        context['sources'] = sorted(list_collector_names())
         context['current_source'] = self.request.GET.get('source', '')
         context['all_runs'] = CollectionRun.objects.all()[:10]
 
