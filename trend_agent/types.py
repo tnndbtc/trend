@@ -264,6 +264,7 @@ class PipelineResult(BaseModel):
     errors: List[str] = Field(default_factory=list)
     started_at: datetime
     completed_at: Optional[datetime] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         frozen = False

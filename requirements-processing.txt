@@ -1,0 +1,24 @@
+# Processing Pipeline Dependencies
+# Session 3: Processing Pipeline Components
+
+# Core ML/NLP Libraries
+numpy>=1.24.0
+scikit-learn>=1.3.0
+hdbscan>=0.8.33  # HDBSCAN clustering
+langdetect>=1.0.9  # Language detection
+
+# Text Processing
+beautifulsoup4>=4.12.0  # HTML cleaning
+lxml>=4.9.0  # XML/HTML parsing (faster than html.parser)
+
+# Optional: Advanced NLP (commented out by default)
+# spacy>=3.5.0  # Named entity recognition (optional)
+# en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0.tar.gz
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# Already in main requirements:
+# pydantic>=2.0.0
+# python-dateutil>=2.8.0
