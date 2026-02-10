@@ -18,15 +18,29 @@ from trend_agent.storage.interfaces import (
     VectorRepository,
 )
 
-# Concrete implementations
-from trend_agent.storage.postgres import (
-    PostgreSQLConnectionPool,
-    PostgreSQLItemRepository,
-    PostgreSQLTopicRepository,
-    PostgreSQLTrendRepository,
-)
-from trend_agent.storage.qdrant import QdrantVectorRepository
-from trend_agent.storage.redis import RedisCacheRepository
+# Concrete implementations (conditional imports for parallel development)
+try:
+    from trend_agent.storage.postgres import (
+        PostgreSQLConnectionPool,
+        PostgreSQLItemRepository,
+        PostgreSQLTopicRepository,
+        PostgreSQLTrendRepository,
+    )
+except ImportError:
+    # Postgres dependencies not installed yet (parallel development)
+    pass
+
+try:
+    from trend_agent.storage.qdrant import QdrantVectorRepository
+except ImportError:
+    # Qdrant dependencies not installed yet
+    pass
+
+try:
+    from trend_agent.storage.redis import RedisCacheRepository
+except ImportError:
+    # Redis dependencies not installed yet
+    pass
 
 __all__ = [
     # Interfaces
