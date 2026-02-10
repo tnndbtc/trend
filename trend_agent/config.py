@@ -10,6 +10,9 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "YOUR_API_KEY")
 MODEL = os.getenv("MODEL", "gpt-4o-mini")
 
+# YouTube API Configuration
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
+
 # Trend Agent Configuration
 MAX_TRENDS = int(os.getenv("MAX_TRENDS", "30"))
 EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")

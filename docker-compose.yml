@@ -1,6 +1,10 @@
 version: '3.8'
 
 services:
+  # ============================================================================
+  # Application Services
+  # ============================================================================
+
   web:
     build:
       context: .
@@ -22,12 +26,44 @@ services:
     environment:
       # Pass environment variables from host (takes precedence over .env.docker)
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY:-}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
       - MOCK_API=${MOCK_API:-1}
+      # Django admin credentials
+      - DB_USER=${DB_USER:-}
+      - DB_PASSWORD=${DB_PASSWORD:-}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
       # Python environment
       - PYTHONPATH=/app/trend_agent:/app
       - TRANSFORMERS_CACHE=/root/.cache/huggingface
       - SENTENCE_TRANSFORMERS_HOME=/root/.cache/sentence-transformers
+      # Database connections
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-trends}
+      - POSTGRES_USER=${POSTGRES_USER:-trend_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-trend_password}
+      # Vector DB
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      # Cache
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      # Message Queue
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=${RABBITMQ_USER:-trend_user}
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-trend_password}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000')"]
@@ -35,3 +71,247 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    networks:
+      - trend-network
+
+  # FastAPI service (for Session 4 development)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trend-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    env_file:
+      - .env.docker
+    environment:
+      - PYTHONPATH=/app
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-trends}
+      - POSTGRES_USER=${POSTGRES_USER:-trend_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-trend_password}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - api  # Only start when api profile is active
+    networks:
+      - trend-network
+
+  # Celery worker (for Session 5 development)
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trend-celery-worker
+    volumes:
+      - .:/app
+    env_file:
+      - .env.docker
+    environment:
+      - PYTHONPATH=/app
+      - POSTGRES_HOST=postgres
+      - RABBITMQ_HOST=rabbitmq
+      - REDIS_HOST=redis
+    command: celery -A trend_agent.tasks worker --loglevel=info
+    depends_on:
+      - rabbitmq
+      - redis
+      - postgres
+    restart: unless-stopped
+    profiles:
+      - celery  # Only start when celery profile is active
+    networks:
+      - trend-network
+
+  # Celery beat scheduler
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trend-celery-beat
+    volumes:
+      - .:/app
+    env_file:
+      - .env.docker
+    environment:
+      - PYTHONPATH=/app
+      - POSTGRES_HOST=postgres
+      - RABBITMQ_HOST=rabbitmq
+      - REDIS_HOST=redis
+    command: celery -A trend_agent.tasks beat --loglevel=info
+    depends_on:
+      - rabbitmq
+      - redis
+    restart: unless-stopped
+    profiles:
+      - celery  # Only start when celery profile is active
+    networks:
+      - trend-network
+
+  # ============================================================================
+  # Storage Layer Services (Session 1)
+  # ============================================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: trend-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-trends}
+      - POSTGRES_USER=${POSTGRES_USER:-trend_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-trend_password}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trend_user} -d ${POSTGRES_DB:-trends}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trend-network
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: trend-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trend-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: trend-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trend-network
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: trend-rabbitmq
+    ports:
+      - "5672:5672"   # AMQP port
+      - "15672:15672" # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-trend_user}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-trend_password}
+      - RABBITMQ_DEFAULT_VHOST=/
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trend-network
+
+  # ============================================================================
+  # Observability Services (Session 6) - Optional
+  # ============================================================================
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: trend-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    restart: unless-stopped
+    profiles:
+      - observability
+    networks:
+      - trend-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: trend-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources
+    restart: unless-stopped
+    profiles:
+      - observability
+    networks:
+      - trend-network
+    depends_on:
+      - prometheus
+
+# ============================================================================
+# Networks
+# ============================================================================
+
+networks:
+  trend-network:
+    driver: bridge
+
+# ============================================================================
+# Volumes
+# ============================================================================
+
+volumes:
+  postgres-data:
+    driver: local
+  qdrant-data:
+    driver: local
+  redis-data:
+    driver: local
+  rabbitmq-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
