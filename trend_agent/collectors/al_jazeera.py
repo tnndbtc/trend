@@ -1,49 +1,34 @@
 """
-Al Jazeera collector - Fetches latest news from Al Jazeera RSS feed.
+Al Jazeera collector plugin.
 
-Al Jazeera is a major international news organization providing comprehensive
-coverage from the Middle East and around the world.
-
-RSS Feed: https://www.aljazeera.com/xml/rss/all.xml
+Fetches latest news from Al Jazeera RSS feed.
 """
 
-import feedparser
-import sys
-import os
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from models import Topic
-from .utils import extract_rss_entry_data
-from . import register_collector
-
-# Al Jazeera RSS feed URL
-RSS_URL = 'https://www.aljazeera.com/xml/rss/all.xml'
+from trend_agent.collectors.base_rss import BaseRSSCollector
+from trend_agent.ingestion.base import register_collector
+from trend_agent.types import PluginMetadata, SourceType
 
 
-async def fetch():
+@register_collector
+class AlJazeeraCollector(BaseRSSCollector):
     """
-    Fetch latest news from Al Jazeera RSS feed.
+    Collector plugin for Al Jazeera.
 
-    Returns:
-        List of Topic objects
+    Fetches news from Al Jazeera English RSS feed.
     """
-    feed = feedparser.parse(RSS_URL)
-    topics = []
 
-    # Limit to 40 most recent articles
-    for entry in feed.entries[:40]:
-        # Extract standard RSS data using shared utility
-        data = extract_rss_entry_data(entry, 'al_jazeera')
+    rss_url = "https://www.aljazeera.com/xml/rss/all.xml"
+    max_items = 40
 
-        # Skip if no title or URL
-        if not data['title'] or not data['url']:
-            continue
-
-        topics.append(Topic(**data))
-
-    return topics
-
-
-# Register this collector
-register_collector('al_jazeera', fetch)
+    metadata = PluginMetadata(
+        name="al_jazeera",
+        version="1.0.0",
+        author="Trend Agent Team",
+        description="Collects latest news from Al Jazeera RSS feed",
+        source_type=SourceType.AL_JAZEERA,
+        schedule="*/20 * * * *",  # Every 20 minutes
+        enabled=True,
+        rate_limit=60,
+        timeout_seconds=30,
+        retry_count=3,
+    )

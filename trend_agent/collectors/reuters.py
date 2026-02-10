@@ -1,50 +1,34 @@
 """
-Reuters collector - Fetches latest news from Reuters RSS feed.
+Reuters collector plugin.
 
-Reuters is a global news organization providing trusted business, financial,
-national, and international news coverage.
-
-RSS Feed: https://www.reutersagency.com/feed/
+Fetches latest news from Reuters RSS feed.
 """
 
-import feedparser
-import sys
-import os
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from models import Topic
-from .utils import extract_rss_entry_data
-from . import register_collector
-
-# Reuters RSS feed URL
-# Note: Reuters has multiple feeds. Using the main feed.
-RSS_URL = 'https://www.reutersagency.com/feed/'
+from trend_agent.collectors.base_rss import BaseRSSCollector
+from trend_agent.ingestion.base import register_collector
+from trend_agent.types import PluginMetadata, SourceType
 
 
-async def fetch():
+@register_collector
+class ReutersCollector(BaseRSSCollector):
     """
-    Fetch latest news from Reuters RSS feed.
+    Collector plugin for Reuters.
 
-    Returns:
-        List of Topic objects
+    Fetches world news from Reuters RSS feed.
     """
-    feed = feedparser.parse(RSS_URL)
-    topics = []
 
-    # Limit to 40 most recent articles
-    for entry in feed.entries[:40]:
-        # Extract standard RSS data using shared utility
-        data = extract_rss_entry_data(entry, 'reuters')
+    rss_url = "https://www.reutersagency.com/feed/"
+    max_items = 40
 
-        # Skip if no title or URL
-        if not data['title'] or not data['url']:
-            continue
-
-        topics.append(Topic(**data))
-
-    return topics
-
-
-# Register this collector
-register_collector('reuters', fetch)
+    metadata = PluginMetadata(
+        name="reuters",
+        version="1.0.0",
+        author="Trend Agent Team",
+        description="Collects latest news from Reuters RSS feed",
+        source_type=SourceType.REUTERS,
+        schedule="*/15 * * * *",  # Every 15 minutes
+        enabled=True,
+        rate_limit=80,
+        timeout_seconds=30,
+        retry_count=3,
+    )

@@ -1,59 +1,34 @@
 """
-Associated Press News collector - Fetches latest news from AP RSS feed.
+Associated Press (AP) News collector plugin.
 
-The Associated Press is a trusted independent global news organization
-dedicated to factual reporting.
-
-RSS Feed: https://apnews.com/hub/ap-top-news
+Fetches latest news from AP News RSS feed.
 """
 
-import feedparser
-import sys
-import os
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from models import Topic
-from .utils import extract_rss_entry_data
-from . import register_collector
-
-# AP News RSS feed URLs
-# Note: AP News provides various topic feeds
-RSS_FEEDS = {
-    'top_news': 'https://apnews.com/ap-top-news',
-    'world': 'https://apnews.com/world-news',
-    'us': 'https://apnews.com/us-news',
-    'politics': 'https://apnews.com/politics',
-    'technology': 'https://apnews.com/technology',
-}
-
-# Use top news feed
-RSS_URL = 'https://rss.apnews.com/rss/topnews'
+from trend_agent.collectors.base_rss import BaseRSSCollector
+from trend_agent.ingestion.base import register_collector
+from trend_agent.types import PluginMetadata, SourceType
 
 
-async def fetch():
+@register_collector
+class APNewsCollector(BaseRSSCollector):
     """
-    Fetch latest news from Associated Press RSS feed.
+    Collector plugin for Associated Press News.
 
-    Returns:
-        List of Topic objects
+    Fetches top news from AP News RSS feed.
     """
-    feed = feedparser.parse(RSS_URL)
-    topics = []
 
-    # Limit to 40 most recent articles
-    for entry in feed.entries[:40]:
-        # Extract standard RSS data using shared utility
-        data = extract_rss_entry_data(entry, 'ap_news')
+    rss_url = "https://rss.apnews.com/rss/topnews"
+    max_items = 40
 
-        # Skip if no title or URL
-        if not data['title'] or not data['url']:
-            continue
-
-        topics.append(Topic(**data))
-
-    return topics
-
-
-# Register this collector
-register_collector('ap_news', fetch)
+    metadata = PluginMetadata(
+        name="ap_news",
+        version="1.0.0",
+        author="Trend Agent Team",
+        description="Collects latest news from Associated Press RSS feed",
+        source_type=SourceType.AP_NEWS,
+        schedule="*/20 * * * *",  # Every 20 minutes
+        enabled=True,
+        rate_limit=60,
+        timeout_seconds=30,
+        retry_count=3,
+    )
