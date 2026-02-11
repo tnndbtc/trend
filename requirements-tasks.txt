@@ -1,0 +1,23 @@
+# Celery Task Queue Dependencies
+# For Session 5: Task Queue and Background Processing
+
+# Celery and message broker
+celery>=5.3.0
+kombu>=5.3.0  # Celery's messaging library
+
+# Message brokers
+amqp>=5.2.0  # For RabbitMQ
+redis>=5.0.0  # For Redis as result backend
+
+# Task monitoring
+flower>=2.0.0  # Web-based Celery monitoring tool
+
+# Async support
+eventlet>=0.33.0  # For async worker pool (optional)
+
+# System monitoring
+psutil>=5.9.0  # For system resource monitoring
+
+# Already in other requirements but needed for tasks
+# asyncpg>=0.29.0
+# python-dotenv>=1.0.0
