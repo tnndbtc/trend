@@ -1,152 +1,179 @@
 # Quick Start Guide
 
-Get the AI Trend Intelligence Agent running in 2 minutes!
+Get the Trend Intelligence Platform running in 5 minutes!
 
-## Method 1: Docker (Recommended) 🐳
+---
 
-### Prerequisites
+## Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
-- An Anthropic API key
+- **Docker** & **Docker Compose** installed
+- **4GB+ RAM** available  
+- **10GB+ disk space**
+- **OpenAI API Key** (get from [platform.openai.com](https://platform.openai.com))
 
-### Setup Steps
+---
 
-**1. Configure API Key**
+## 1. Initial Setup
 
 ```bash
+# Copy environment file
 cp .env.docker.example .env.docker
+
+# Edit and add your OpenAI API key
+nano .env.docker
+# Change: OPENAI_API_KEY=your_api_key_here
 ```
 
-Edit `.env.docker` and add your key:
-```
-CLAUDE_API_KEY=sk-ant-xxxxx
-```
+**💡 Tip**: If testing, set `MOCK_API=1` to avoid consuming API credits.
 
-**2. Run Setup Script**
+---
+
+## 2. Start the Platform
+
+### Option A: Full Platform (Recommended)
 
 ```bash
 ./setup.sh
+# Select: 1) Full Platform Setup (All Services)
 ```
 
-**3. Collect Trends**
+This starts:
+- Django Web Interface (port 11800)
+- FastAPI REST API (port 8000)
+- PostgreSQL, Qdrant, Redis, RabbitMQ
+- Celery workers + monitoring
+
+### Option B: Web Only (Minimal)
 
 ```bash
-docker-compose exec web python manage.py collect_trends --max-trends 20
-```
-
-**4. View Results**
-
-Visit: http://localhost:11800
-
-Default login:
-- Username: `admin`
-- Password: `changeme123`
-
-### Docker Management
-
-```bash
-docker-compose logs -f          # View logs
-docker-compose down             # Stop
-docker-compose restart          # Restart
-docker-compose exec web bash   # Shell access
+./setup.sh
+# Select: 2) Basic Setup (Web Interface Only)
 ```
 
 ---
 
-## Method 2: Manual Installation
+## 3. Access the Platform
 
-### Prerequisites
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| **Web Interface** | http://localhost:11800 | N/A |
+| **Admin Panel** | http://localhost:11800/admin | admin / changeme123 |
+| **API Docs** | http://localhost:8000/docs | API Key required |
+| **Grafana** | http://localhost:3000 | admin / admin |
 
-- Python 3.8+
-- pip
-- An Anthropic API key
-
-## Setup Steps
-
-### 1. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Configure API Key
-
-Copy the example environment file and add your Claude API key:
+### Generate API Keys
 
 ```bash
-cp .env.example .env
+./setup.sh → 10) Generate API Keys
 ```
 
-Edit `.env` and add your key:
-```
-CLAUDE_API_KEY=sk-ant-xxxxx
+---
+
+## 4. Collect Trends
+
+### Interactive:
+```bash
+./setup.sh → 4) Collect Trends
 ```
 
-### 3. Setup Database
+### Command Line:
+```bash
+docker compose exec web python manage.py collect_trends --max-posts-per-category 5
+```
+
+### API:
+```bash
+curl -X POST "http://localhost:8000/api/v1/admin/collect" \
+  -H "X-API-Key: YOUR_ADMIN_KEY"
+```
+
+⏱️ Takes ~2-5 minutes
+
+---
+
+## 5. Common Commands
 
 ```bash
-cd web_interface
-python manage.py migrate
-python manage.py createsuperuser  # Follow prompts
+# Service status
+./setup.sh → 6) Service Status & Health Check
+
+# View logs  
+./setup.sh → 7) View Logs
+
+# Database backup
+./setup.sh → 8) Database Operations → 2) Create Backup
+
+# Clean old data
+./setup.sh → 9) Clean Old Data
 ```
 
-### 4. Start Web Server
+---
+
+## Quick API Examples
 
 ```bash
-python manage.py runserver
+# Get trends
+curl -H "X-API-Key: YOUR_KEY" \
+  "http://localhost:8000/api/v1/trends?limit=10"
+
+# Search
+curl -X POST "http://localhost:8000/api/v1/search/semantic" \
+  -H "X-API-Key: YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "AI trends", "limit": 5}'
+
+# Health
+curl "http://localhost:8000/api/v1/health"
 ```
 
-Visit: http://localhost:11800
+---
 
-### 5. Collect Trends
+## Automatic Collection
 
-In a new terminal:
+With Celery (Full Platform), trends collect automatically:
+- Every hour: All sources
+- Every 15 min: High-frequency sources  
+- Daily 3 AM: Cleanup
 
-```bash
-cd web_interface
-python manage.py collect_trends --max-trends 10
-```
-
-This will:
-- Fetch topics from Reddit, Hacker News, and Google News
-- Analyze and cluster them
-- Generate AI summaries
-- Save to database
-
-### 6. View Results
-
-Refresh your browser to see:
-- Dashboard with latest trends
-- Detailed trend analysis
-- Source attribution
-- Collection history
-
-## Tips
-
-- Run `collect_trends` on a schedule (cron/systemd) for continuous monitoring
-- Access admin at http://localhost:11800/admin/
-- Filter topics by source in the Topics view
-- Each collection run is tracked with metrics
+---
 
 ## Troubleshooting
 
-**Database errors?**
-- Make sure you ran `python manage.py migrate`
+### Services won't start
+```bash
+./setup.sh → 7) View Logs → 8) All Services
+```
 
-**No trends showing?**
-- Run `python manage.py collect_trends` first
+### Port conflicts
+```bash
+sudo lsof -i :11800
+sudo lsof -i :8000
+```
 
-**Import errors?**
-- Check all dependencies installed: `pip install -r requirements.txt`
+### Database reset
+```bash
+docker compose down -v
+./setup.sh → 1) Full Platform Setup
+```
 
-**API errors?**
-- Verify your CLAUDE_API_KEY in `.env`
+---
+
+## Stop Platform
+
+```bash
+docker compose down         # Stop all
+docker compose down -v      # Stop + remove data
+```
+
+---
 
 ## Next Steps
 
-- Customize clustering parameters in `trend_agent/processing/cluster.py`
-- Adjust deduplication threshold in `deduplicate.py`
-- Modify the summary prompt in `llm/summarizer.py`
-- Add new data sources in `collectors/`
+1. Configure Categories: `./setup.sh → 5)`
+2. View Monitoring: http://localhost:3000
+3. Explore API: http://localhost:8000/docs
+4. See SERVICES.md and API_GUIDE.md for details
 
-Enjoy exploring trends!
+---
+
+**🎉 Happy trend hunting!**

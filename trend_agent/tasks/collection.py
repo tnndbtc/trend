@@ -34,7 +34,89 @@ class CollectionTask(Task):
             f"Kwargs: {kwargs}\n"
             f"Info: {einfo}"
         )
-        # TODO: Send alert, update health checker
+
+        # Send alert and update health checker
+        try:
+            import asyncio
+            import os
+            from trend_agent.services.alerts import get_alert_service
+            from trend_agent.storage.postgres import (
+                PostgreSQLConnectionPool,
+                PostgreSQLPluginHealthRepository,
+            )
+            from trend_agent.types import PluginHealth
+
+            # Extract plugin name from args
+            plugin_name = args[0] if args else "unknown"
+
+            # Get plugin health from database
+            async def update_health():
+                db_pool = PostgreSQLConnectionPool(
+                    host=os.getenv("POSTGRES_HOST", "localhost"),
+                    port=int(os.getenv("POSTGRES_PORT", "5432")),
+                    database=os.getenv("POSTGRES_DB", "trends"),
+                    user=os.getenv("POSTGRES_USER", "trend_user"),
+                    password=os.getenv("POSTGRES_PASSWORD", "trend_password"),
+                )
+                await db_pool.connect()
+
+                try:
+                    health_repo = PostgreSQLPluginHealthRepository(db_pool.pool)
+
+                    # Get existing health or create new
+                    health = await health_repo.get(plugin_name)
+                    if health is None:
+                        health = PluginHealth(
+                            name=plugin_name,
+                            is_healthy=False,
+                            last_run_at=None,
+                            last_success_at=None,
+                            last_error=str(exc),
+                            consecutive_failures=1,
+                            total_runs=1,
+                            success_rate=0.0,
+                        )
+                    else:
+                        # Update health with failure
+                        health.is_healthy = False
+                        health.last_error = str(exc)
+                        health.consecutive_failures += 1
+                        health.total_runs += 1
+                        health.success_rate = (
+                            (health.total_runs - health.consecutive_failures) / health.total_runs
+                        ) if health.total_runs > 0 else 0.0
+
+                    # Update database
+                    await health_repo.update(health)
+
+                    # Send alert
+                    alert_service = get_alert_service()
+                    await alert_service.send_collection_failure_alert(
+                        plugin_name=plugin_name,
+                        error_message=str(exc),
+                        consecutive_failures=health.consecutive_failures,
+                    )
+
+                    return health.consecutive_failures
+
+                finally:
+                    await db_pool.close()
+
+            # Run async operations
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            consecutive_failures = loop.run_until_complete(update_health())
+            logger.info(
+                f"Updated health for plugin '{plugin_name}': "
+                f"{consecutive_failures} consecutive failures"
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to send alert or update health: {e}")
 
 
 @app.task(base=CollectionTask, name="trend_agent.tasks.collection.collect_from_plugin_task")

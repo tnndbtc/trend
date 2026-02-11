@@ -1,6 +1,7 @@
 # Core async and web frameworks
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
+slowapi>=0.1.9  # Rate limiting for FastAPI
 celery>=5.3.0
 redis>=5.0.0
 
@@ -45,3 +46,30 @@ strawberry-graphql[fastapi]>=0.215.0  # For GraphQL support
 
 # Utilities
 python-dotenv>=1.0.0
+
+# Data collectors
+pytrends>=4.9.0  # Google Trends
+feedparser>=6.0.10  # RSS feeds
+
+# CJK and text processing
+jieba>=0.42.1  # Chinese segmentation
+pypinyin>=0.50.0  # Chinese romanization
+pykakasi>=2.2.1  # Japanese romanization
+hangul-romanize>=0.1.0  # Korean romanization
+transliterate>=1.10.2  # Cyrillic romanization
+
+# Advanced storage systems (Phase 6)
+influxdb-client>=1.38.0  # TimeSeries database
+aio-pika>=9.3.0  # RabbitMQ async client
+aioboto3>=12.1.0  # S3-compatible object storage
+
+# Distributed tracing and observability (Phase 7)
+opentelemetry-api>=1.21.0
+opentelemetry-sdk>=1.21.0
+opentelemetry-exporter-otlp-proto-http>=1.21.0
+opentelemetry-instrumentation-fastapi>=0.42b0
+opentelemetry-instrumentation-aiohttp-client>=0.42b0
+opentelemetry-instrumentation-redis>=0.42b0
+opentelemetry-instrumentation-celery>=0.42b0
+opentelemetry-instrumentation-asyncpg>=0.42b0
+psutil>=5.9.0  # For system metrics

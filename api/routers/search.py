@@ -8,8 +8,10 @@ both keyword matching and vector similarity.
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from api.schemas.trends import TrendResponse, TopicResponse, MetricsResponse
 from api.dependencies import (
@@ -36,6 +38,9 @@ from trend_agent.services.search import QdrantSemanticSearchService
 
 
 router = APIRouter(prefix="/search", tags=["Search"])
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 
 class SemanticSearchRequest(BaseModel):
@@ -89,7 +94,9 @@ class SearchResponse(BaseModel):
     summary="Semantic search",
     description="Search using vector similarity across trends and topics.",
 )
+@limiter.limit("30/minute")  # Rate limit: 30 requests per minute
 async def semantic_search(
+    request: Request,
     search_request: SemanticSearchRequest,
     api_key: str = Depends(verify_api_key),
     trend_repo: TrendRepository = Depends(get_trend_repository),
@@ -206,7 +213,9 @@ async def semantic_search(
     summary="Keyword search",
     description="Search using keyword matching across trends and topics.",
 )
+@limiter.limit("60/minute")  # Rate limit: 60 requests per minute (less expensive than semantic)
 async def keyword_search(
+    request: Request,
     search_request: KeywordSearchRequest,
     api_key: str = Depends(verify_api_key),
     trend_repo: TrendRepository = Depends(get_trend_repository),

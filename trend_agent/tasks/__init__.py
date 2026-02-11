@@ -110,6 +110,12 @@ class CeleryConfig:
             "schedule": crontab(minute="*/5"),  # Every 5 minutes
             "options": {"queue": "default"},
         },
+        # Update trend states every 20 minutes
+        "update-trend-states": {
+            "task": "trend_agent.tasks.scheduler.update_trend_states_task",
+            "schedule": crontab(minute="*/20"),  # Every 20 minutes
+            "options": {"queue": "processing"},
+        },
     }
 
     # Logging
@@ -169,8 +175,70 @@ class TaskErrorHandler:
             f"Task {task_id} failed with exception: {exception}\n"
             f"Traceback: {traceback}"
         )
-        # TODO: Send alert notification (email, Slack, etc.)
-        # TODO: Record failure in database for analytics
+
+        # Send alert notification (async in background)
+        try:
+            import asyncio
+            from trend_agent.services.alerts import get_alert_service, AlertSeverity
+
+            alert_service = get_alert_service()
+
+            async def send_failure_alert():
+                await alert_service.send_alert(
+                    title=f"Task Failure: {task_id}",
+                    message=f"Task failed with exception: {str(exception)}\n\nTraceback:\n{traceback}",
+                    severity=AlertSeverity.ERROR,
+                    metadata={"task_id": task_id, "exception_type": type(exception).__name__},
+                )
+
+            # Run alert in new event loop (since we're in Celery context)
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            loop.run_until_complete(send_failure_alert())
+
+        except Exception as e:
+            logger.warning(f"Failed to send alert for task failure: {e}")
+
+        # Record failure in database for analytics
+        try:
+            import asyncio
+            from trend_agent.storage.postgres import PostgreSQLConnectionPool
+            import os
+
+            async def record_failure():
+                db_pool = PostgreSQLConnectionPool(
+                    host=os.getenv("POSTGRES_HOST", "localhost"),
+                    port=int(os.getenv("POSTGRES_PORT", "5432")),
+                    database=os.getenv("POSTGRES_DB", "trends"),
+                    user=os.getenv("POSTGRES_USER", "trend_user"),
+                    password=os.getenv("POSTGRES_PASSWORD", "trend_password"),
+                )
+                await db_pool.connect()
+
+                try:
+                    query = """
+                        INSERT INTO task_failures (task_id, exception, traceback, created_at)
+                        VALUES ($1, $2, $3, NOW())
+                    """
+                    await db_pool.pool.execute(query, task_id, str(exception), traceback)
+                finally:
+                    await db_pool.close()
+
+            # Run in event loop
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            loop.run_until_complete(record_failure())
+
+        except Exception as e:
+            logger.warning(f"Failed to record task failure in database: {e}")
 
 
 # Utility functions

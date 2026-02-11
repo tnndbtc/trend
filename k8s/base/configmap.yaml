@@ -1,0 +1,32 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trend-config
+  namespace: trend-intelligence
+data:
+  # API Configuration
+  LOG_LEVEL: "INFO"
+  LOG_JSON: "true"
+
+  # Database Configuration
+  POSTGRES_DB: "trends"
+  POSTGRES_PORT: "5432"
+
+  # Redis Configuration
+  REDIS_PORT: "6379"
+
+  # Qdrant Configuration
+  QDRANT_PORT: "6333"
+
+  # Rate Limiting
+  RATE_LIMIT_DEFAULT: "100/minute"
+  RATE_LIMIT_DEFAULT_HOUR: "1000/hour"
+  ENABLE_RATE_LIMITING: "true"
+
+  # CORS
+  CORS_ORIGINS: "*"
+
+  # Observability
+  ENABLE_TRACING: "true"
+  OTEL_SERVICE_NAME: "trend-intelligence-platform"

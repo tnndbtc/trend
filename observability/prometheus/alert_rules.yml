@@ -1,0 +1,325 @@
+---
+# Prometheus Alert Rules for Trend Intelligence Platform
+#
+# These rules define alerts for critical system conditions including:
+# - High error rates
+# - Performance degradation
+# - Resource exhaustion
+# - Service availability issues
+
+groups:
+  # ============================================================================
+  # API Health Alerts
+  # ============================================================================
+
+  - name: api_health
+    interval: 30s
+    rules:
+      - alert: HighAPIErrorRate
+        expr: |
+          (
+            sum(rate(api_requests_total{status_code=~"5.."}[5m])) by (endpoint)
+            /
+            sum(rate(api_requests_total[5m])) by (endpoint)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High API error rate on {{ $labels.endpoint }}"
+          description: "Endpoint {{ $labels.endpoint }} has {{ $value | humanizePercentage }} error rate over the last 5 minutes"
+
+      - alert: CriticalAPIErrorRate
+        expr: |
+          (
+            sum(rate(api_requests_total{status_code=~"5.."}[5m])) by (endpoint)
+            /
+            sum(rate(api_requests_total[5m])) by (endpoint)
+          ) > 0.20
+        for: 2m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "Critical API error rate on {{ $labels.endpoint }}"
+          description: "Endpoint {{ $labels.endpoint }} has {{ $value | humanizePercentage }} error rate - immediate attention required"
+
+      - alert: SlowAPIResponse
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(api_request_duration_seconds_bucket[5m])) by (endpoint, le)
+          ) > 5
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "Slow API response on {{ $labels.endpoint }}"
+          description: "95th percentile latency for {{ $labels.endpoint }} is {{ $value }}s"
+
+      - alert: APIDown
+        expr: up{job="trend-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "API service is down"
+          description: "The Trend Intelligence API has been down for more than 1 minute"
+
+  # ============================================================================
+  # Celery Task Alerts
+  # ============================================================================
+
+  - name: celery_tasks
+    interval: 30s
+    rules:
+      - alert: HighTaskFailureRate
+        expr: |
+          (
+            sum(rate(celery_tasks_total{status="failure"}[10m])) by (task_name)
+            /
+            sum(rate(celery_tasks_total[10m])) by (task_name)
+          ) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+          component: celery
+        annotations:
+          summary: "High task failure rate for {{ $labels.task_name }}"
+          description: "Task {{ $labels.task_name }} has {{ $value | humanizePercentage }} failure rate"
+
+      - alert: TaskQueueBacklog
+        expr: celery_queue_length > 1000
+        for: 15m
+        labels:
+          severity: warning
+          component: celery
+        annotations:
+          summary: "Large task queue backlog in {{ $labels.queue_name }}"
+          description: "Queue {{ $labels.queue_name }} has {{ $value }} pending tasks"
+
+      - alert: LongRunningTask
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(celery_task_duration_seconds_bucket[10m])) by (task_name, le)
+          ) > 600
+        for: 15m
+        labels:
+          severity: warning
+          component: celery
+        annotations:
+          summary: "Long running task {{ $labels.task_name }}"
+          description: "95th percentile duration for {{ $labels.task_name }} is {{ $value }}s (>10 minutes)"
+
+      - alert: NoTasksProcessed
+        expr: |
+          sum(rate(celery_tasks_total[10m])) by (task_name) == 0
+        for: 30m
+        labels:
+          severity: warning
+          component: celery
+        annotations:
+          summary: "No tasks processed for {{ $labels.task_name }}"
+          description: "Task {{ $labels.task_name }} has not processed any items in 30 minutes"
+
+  # ============================================================================
+  # Database Alerts
+  # ============================================================================
+
+  - name: database
+    interval: 30s
+    rules:
+      - alert: SlowDatabaseQueries
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(db_query_duration_seconds_bucket[5m])) by (operation, table, le)
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Slow database queries on {{ $labels.table }}"
+          description: "95th percentile query time for {{ $labels.operation }} on {{ $labels.table }} is {{ $value }}s"
+
+      - alert: DatabaseConnectionPoolExhausted
+        expr: |
+          (db_connection_pool_available / db_connection_pool_size) < 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database connection pool nearly exhausted"
+          description: "Only {{ $value | humanizePercentage }} of database connections available"
+
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "Cannot connect to PostgreSQL database"
+
+  # ============================================================================
+  # System Resource Alerts
+  # ============================================================================
+
+  - name: system_resources
+    interval: 30s
+    rules:
+      - alert: HighCPUUsage
+        expr: system_cpu_usage_percent > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value }}% for more than 10 minutes"
+
+      - alert: CriticalCPUUsage
+        expr: system_cpu_usage_percent > 95
+        for: 5m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "Critical CPU usage"
+          description: "CPU usage is {{ $value }}% - immediate attention required"
+
+      - alert: HighMemoryUsage
+        expr: system_memory_usage_percent > 85
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}% for more than 10 minutes"
+
+      - alert: CriticalMemoryUsage
+        expr: system_memory_usage_percent > 95
+        for: 5m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "Critical memory usage"
+          description: "Memory usage is {{ $value }}% - risk of OOM"
+
+      - alert: HighDiskUsage
+        expr: system_disk_usage_percent > 85
+        for: 30m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High disk usage"
+          description: "Disk usage is {{ $value }}%"
+
+      - alert: CriticalDiskUsage
+        expr: system_disk_usage_percent > 95
+        for: 5m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "Critical disk usage"
+          description: "Disk usage is {{ $value }}% - immediate cleanup required"
+
+  # ============================================================================
+  # Business Metrics Alerts
+  # ============================================================================
+
+  - name: business_metrics
+    interval: 60s
+    rules:
+      - alert: NoItemsCollected
+        expr: |
+          sum(rate(items_collected_total[30m])) == 0
+        for: 1h
+        labels:
+          severity: warning
+          component: collection
+        annotations:
+          summary: "No items collected from any source"
+          description: "No items have been collected in the last hour - check data collectors"
+
+      - alert: LowCollectionRate
+        expr: |
+          sum(rate(items_collected_total[1h])) by (source) < 10
+        for: 2h
+        labels:
+          severity: warning
+          component: collection
+        annotations:
+          summary: "Low collection rate from {{ $labels.source }}"
+          description: "Only {{ $value }} items/hour collected from {{ $labels.source }}"
+
+      - alert: NoTrendsCreated
+        expr: |
+          sum(rate(trends_created_total[1h])) == 0
+        for: 2h
+        labels:
+          severity: warning
+          component: processing
+        annotations:
+          summary: "No trends created"
+          description: "No trends have been created in the last 2 hours"
+
+      - alert: UnusualTrendVelocity
+        expr: |
+          abs(
+            sum(rate(trends_created_total[1h]))
+            -
+            sum(rate(trends_created_total[1h] offset 24h))
+          ) > 100
+        for: 1h
+        labels:
+          severity: info
+          component: processing
+        annotations:
+          summary: "Unusual trend creation velocity"
+          description: "Trend creation rate has changed significantly compared to 24h ago"
+
+  # ============================================================================
+  # Data Quality Alerts
+  # ============================================================================
+
+  - name: data_quality
+    interval: 60s
+    rules:
+      - alert: HighDuplicateRate
+        expr: |
+          (
+            sum(rate(items_deduplicated_total[1h]))
+            /
+            sum(rate(items_collected_total[1h]))
+          ) > 0.50
+        for: 2h
+        labels:
+          severity: warning
+          component: processing
+        annotations:
+          summary: "High duplicate item rate"
+          description: "{{ $value | humanizePercentage }} of collected items are duplicates"
+
+      - alert: LowLanguageDetectionRate
+        expr: |
+          (
+            sum(rate(items_language_detected_total[1h]))
+            /
+            sum(rate(items_collected_total[1h]))
+          ) < 0.90
+        for: 1h
+        labels:
+          severity: warning
+          component: processing
+        annotations:
+          summary: "Low language detection rate"
+          description: "Only {{ $value | humanizePercentage }} of items have detected languages"

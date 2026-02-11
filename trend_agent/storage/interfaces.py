@@ -123,6 +123,23 @@ class TrendRepository(Protocol):
         """
         ...
 
+    async def delete_old_trends(
+        self,
+        days: int,
+        states: Optional[List["TrendState"]] = None
+    ) -> int:
+        """
+        Delete old trends in specific states.
+
+        Args:
+            days: Delete trends older than this many days
+            states: Optional list of states to filter (e.g., DEAD, DECLINING)
+
+        Returns:
+            Number of trends deleted
+        """
+        ...
+
 
 class TopicRepository(Protocol):
     """Interface for topic persistence operations."""
@@ -182,6 +199,22 @@ class TopicRepository(Protocol):
 
         Returns:
             List of ProcessedItem objects ordered by added_at DESC
+        """
+        ...
+
+    async def delete_stale_topics(self, days: int) -> int:
+        """
+        Delete stale topics that have no recent activity.
+
+        Deletes topics that:
+        - Have not been updated in X days
+        - Are not associated with any active trend
+
+        Args:
+            days: Delete topics not updated in this many days
+
+        Returns:
+            Number of topics deleted
         """
         ...
 

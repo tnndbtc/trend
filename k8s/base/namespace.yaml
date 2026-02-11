@@ -1,0 +1,9 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: trend-intelligence
+  labels:
+    name: trend-intelligence
+    app.kubernetes.io/name: trend-intelligence-platform
+    app.kubernetes.io/component: namespace

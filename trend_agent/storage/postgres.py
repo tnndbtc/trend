@@ -601,6 +601,51 @@ class PostgreSQLTrendRepository(BaseTrendRepository):
             logger.error(f"Failed to count trends: {e}")
             raise StorageError(f"Failed to count trends: {e}")
 
+    async def delete_old_trends(
+        self,
+        days: int,
+        states: Optional[List[TrendState]] = None
+    ) -> int:
+        """
+        Delete old trends in specific states.
+
+        Args:
+            days: Delete trends older than this many days
+            states: Optional list of states to filter (e.g., DEAD, DECLINING)
+
+        Returns:
+            Number of trends deleted
+        """
+        try:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+            if states:
+                # Delete trends in specific states older than cutoff
+                state_values = [s.value for s in states]
+                query = """
+                    DELETE FROM trends
+                    WHERE last_updated < $1
+                    AND state = ANY($2)
+                    RETURNING id
+                """
+                rows = await self.pool.fetch(query, cutoff_date, state_values)
+            else:
+                # Delete all trends older than cutoff
+                query = """
+                    DELETE FROM trends
+                    WHERE last_updated < $1
+                    RETURNING id
+                """
+                rows = await self.pool.fetch(query, cutoff_date)
+
+            deleted = len(rows)
+            logger.info(f"Deleted {deleted} trends older than {days} days (states: {states})")
+            return deleted
+
+        except Exception as e:
+            logger.error(f"Failed to delete old trends: {e}")
+            raise StorageError(f"Failed to delete old trends: {e}")
+
 
 class PostgreSQLTopicRepository:
     """PostgreSQL implementation of TopicRepository."""
@@ -887,6 +932,42 @@ class PostgreSQLTopicRepository:
         except Exception as e:
             logger.error(f"Failed to get items for topic {topic_id}: {e}")
             raise StorageError(f"Failed to get items for topic: {e}")
+
+    async def delete_stale_topics(self, days: int) -> int:
+        """
+        Delete stale topics that have no recent activity.
+
+        Deletes topics that:
+        - Have not been updated in X days
+        - Are not associated with any active trend
+
+        Args:
+            days: Delete topics not updated in this many days
+
+        Returns:
+            Number of topics deleted
+        """
+        try:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+            query = """
+                DELETE FROM topics
+                WHERE last_updated < $1
+                AND id NOT IN (
+                    SELECT DISTINCT topic_id
+                    FROM trends
+                    WHERE state IN ('emerging', 'viral', 'sustained')
+                )
+                RETURNING id
+            """
+            rows = await self.pool.fetch(query, cutoff_date)
+            deleted = len(rows)
+            logger.info(f"Deleted {deleted} stale topics older than {days} days")
+            return deleted
+
+        except Exception as e:
+            logger.error(f"Failed to delete stale topics: {e}")
+            raise StorageError(f"Failed to delete stale topics: {e}")
 
 
 class PostgreSQLItemRepository:

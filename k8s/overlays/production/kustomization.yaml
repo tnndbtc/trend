@@ -1,0 +1,39 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+bases:
+  - ../../base
+
+namespace: trend-intelligence
+
+replicas:
+  - name: trend-api
+    count: 5
+  - name: celery-worker
+    count: 10
+
+images:
+  - name: trend-intelligence/api
+    newTag: v1.0.0
+  - name: trend-intelligence/worker
+    newTag: v1.0.0
+
+patches:
+  - target:
+      kind: Deployment
+      name: trend-api
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 1000m
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: 4000m
+
+configMapGenerator:
+  - name: trend-config
+    behavior: merge
+    literals:
+      - LOG_LEVEL=WARNING
+      - ENABLE_RATE_LIMITING=true

@@ -12,6 +12,9 @@ from uuid import uuid4
 
 from trend_agent.processing.interfaces import BaseRanker, BaseProcessingStage
 from trend_agent.types import ProcessedItem, Topic, Trend, TrendState
+from trend_agent.services.trend_states import TrendStateService
+from trend_agent.services.key_points import KeyPointExtractor
+from trend_agent.services.interfaces import LLMService
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,14 @@ class CompositeRanker(BaseRanker):
         recency_weight: float = 0.2,
         velocity_weight: float = 0.2,
         diversity_weight: float = 0.1,
+        state_service: Optional[TrendStateService] = None,
+        key_point_extractor: Optional[KeyPointExtractor] = None,
+        extract_key_points: bool = False,
+        enable_temporal_decay: bool = True,
+        enable_velocity_boost: bool = True,
+        enable_category_balancing: bool = False,
+        temporal_decay_halflife_hours: float = 48.0,
+        velocity_boost_factor: float = 1.5,
     ):
         """
         Initialize composite ranker.
@@ -42,6 +53,14 @@ class CompositeRanker(BaseRanker):
             recency_weight: Weight for recency score (default: 0.2)
             velocity_weight: Weight for velocity score (default: 0.2)
             diversity_weight: Weight for diversity score (default: 0.1)
+            state_service: TrendStateService for state detection (creates new if None)
+            key_point_extractor: Optional KeyPointExtractor for extracting key points
+            extract_key_points: Whether to extract key points (requires LLM)
+            enable_temporal_decay: Apply temporal decay to scores (default: True)
+            enable_velocity_boost: Boost scores for accelerating trends (default: True)
+            enable_category_balancing: Balance results across categories (default: False)
+            temporal_decay_halflife_hours: Half-life for temporal decay in hours (default: 48)
+            velocity_boost_factor: Multiplier for velocity boosting (default: 1.5)
 
         Note:
             Weights should sum to 1.0 for normalized scoring
@@ -50,6 +69,14 @@ class CompositeRanker(BaseRanker):
         self._recency_weight = recency_weight
         self._velocity_weight = velocity_weight
         self._diversity_weight = diversity_weight
+        self._state_service = state_service or TrendStateService()
+        self._key_point_extractor = key_point_extractor
+        self._extract_key_points = extract_key_points
+        self._enable_temporal_decay = enable_temporal_decay
+        self._enable_velocity_boost = enable_velocity_boost
+        self._enable_category_balancing = enable_category_balancing
+        self._temporal_decay_halflife_hours = temporal_decay_halflife_hours
+        self._velocity_boost_factor = velocity_boost_factor
 
     async def rank(self, topics: List[Topic]) -> List[Trend]:
         """
@@ -76,9 +103,9 @@ class CompositeRanker(BaseRanker):
                 rank=0,  # Will be set after sorting
                 title=topic.title,
                 summary=topic.summary,
-                key_points=[],  # TODO: extract key points
+                key_points=[],  # Will be extracted if enabled
                 category=topic.category,
-                state=self._determine_trend_state(topic),
+                state=TrendState.EMERGING,  # Initial state, will be updated
                 score=score,
                 sources=topic.sources,
                 item_count=topic.item_count,
@@ -91,19 +118,45 @@ class CompositeRanker(BaseRanker):
                 metadata=topic.metadata,
             )
 
-            # Calculate velocity
-            trend.velocity = await self.calculate_velocity(trend)
+            # Calculate velocity using state service
+            trend.velocity = self._state_service.calculate_velocity(trend)
+
+            # Determine state using sophisticated state service
+            trend.state = await self._state_service.analyze_trend(trend)
+
+            # Extract key points if enabled
+            if self._extract_key_points and self._key_point_extractor:
+                try:
+                    trend.key_points = await self._key_point_extractor.extract_key_points(
+                        trend
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to extract key points for '{trend.title[:50]}': {e}"
+                    )
+                    trend.key_points = []
 
             trends.append(trend)
 
-        # Sort by score descending
+        # Apply advanced ranking adjustments
+        if self._enable_temporal_decay:
+            trends = self._apply_temporal_decay(trends)
+
+        if self._enable_velocity_boost:
+            trends = self._apply_velocity_boost(trends)
+
+        # Sort by adjusted score descending
         trends.sort(key=lambda t: t.score, reverse=True)
+
+        # Apply category balancing if enabled
+        if self._enable_category_balancing:
+            trends = self._apply_category_balancing(trends)
 
         # Assign ranks
         for rank, trend in enumerate(trends, start=1):
             trend.rank = rank
 
-        logger.info(f"Ranked {len(trends)} trends")
+        logger.info(f"Ranked {len(trends)} trends with advanced features")
 
         return trends
 
@@ -165,31 +218,9 @@ class CompositeRanker(BaseRanker):
             Velocity score (engagement per hour)
 
         Note:
-            Velocity = total_engagement / time_span_hours
-            Higher velocity indicates rapid growth
+            Delegates to TrendStateService for consistent velocity calculation.
         """
-        # Calculate time span in hours
-        time_span = trend.last_updated - trend.first_seen
-        hours = max(1.0, time_span.total_seconds() / 3600)
-
-        # Calculate total engagement
-        total_engagement = (
-            trend.total_engagement.upvotes
-            + trend.total_engagement.comments * 2  # Weight comments higher
-            + trend.total_engagement.shares * 3  # Weight shares even higher
-            + trend.total_engagement.views * 0.1  # Weight views lower
-        )
-
-        # Velocity = engagement per hour
-        velocity = total_engagement / hours
-
-        logger.debug(
-            f"Trend '{trend.title[:50]}' velocity: "
-            f"{velocity:.2f} engagement/hour "
-            f"(timespan={hours:.1f}h, total_engagement={total_engagement})"
-        )
-
-        return velocity
+        return self._state_service.calculate_velocity(trend)
 
     async def apply_source_diversity(
         self, trends: List[Trend], max_percentage: float = 0.20
@@ -352,34 +383,143 @@ class CompositeRanker(BaseRanker):
         else:
             return 100.0
 
-    def _determine_trend_state(self, topic: Topic) -> TrendState:
+    def _apply_temporal_decay(self, trends: List[Trend]) -> List[Trend]:
         """
-        Determine trend state from topic metrics.
+        Apply temporal decay to trend scores.
+
+        Older trends get lower scores using exponential decay.
 
         Args:
-            topic: Topic to analyze
+            trends: Trends to adjust
 
         Returns:
-            TrendState enum value
+            Trends with decayed scores
         """
+        import math
+
         now = datetime.utcnow()
-        age = now - topic.last_updated
 
-        # Simple heuristics for trend state
-        # In production, use historical data for accurate state detection
+        for trend in trends:
+            age_hours = (now - trend.last_updated).total_seconds() / 3600
 
-        if age < timedelta(hours=6):
-            # Recent activity
-            if topic.total_engagement.score > 1000:
-                return TrendState.VIRAL
+            # Exponential decay: score * e^(-λt)
+            # where λ = ln(2) / half_life
+            decay_lambda = math.log(2) / self._temporal_decay_halflife_hours
+            decay_factor = math.exp(-decay_lambda * age_hours)
+
+            original_score = trend.score
+            trend.score = trend.score * decay_factor
+
+            # Store decay info in metadata
+            if "ranking_adjustments" not in trend.metadata:
+                trend.metadata["ranking_adjustments"] = {}
+
+            trend.metadata["ranking_adjustments"]["temporal_decay"] = {
+                "original_score": original_score,
+                "decay_factor": decay_factor,
+                "age_hours": age_hours,
+            }
+
+            logger.debug(
+                f"Temporal decay for '{trend.title[:30]}': "
+                f"{original_score:.1f} → {trend.score:.1f} (age={age_hours:.1f}h)"
+            )
+
+        return trends
+
+    def _apply_velocity_boost(self, trends: List[Trend]) -> List[Trend]:
+        """
+        Boost scores for trends with accelerating velocity.
+
+        Args:
+            trends: Trends to adjust
+
+        Returns:
+            Trends with velocity-adjusted scores
+        """
+        for trend in trends:
+            # Get velocity analysis
+            velocity_history = trend.metadata.get("velocity_history", [])
+
+            if len(velocity_history) >= 2:
+                # Calculate velocity change
+                recent_velocity = velocity_history[-1]["velocity"]
+                previous_velocity = velocity_history[-2]["velocity"]
+
+                if previous_velocity > 0:
+                    velocity_change_rate = (
+                        recent_velocity - previous_velocity
+                    ) / previous_velocity
+
+                    # Boost if accelerating
+                    if velocity_change_rate > 0.2:  # 20% acceleration
+                        boost_factor = 1.0 + (
+                            velocity_change_rate * self._velocity_boost_factor
+                        )
+                        boost_factor = min(boost_factor, 2.0)  # Cap at 2x
+
+                        original_score = trend.score
+                        trend.score = trend.score * boost_factor
+
+                        if "ranking_adjustments" not in trend.metadata:
+                            trend.metadata["ranking_adjustments"] = {}
+
+                        trend.metadata["ranking_adjustments"]["velocity_boost"] = {
+                            "original_score": original_score,
+                            "boost_factor": boost_factor,
+                            "velocity_change_rate": velocity_change_rate,
+                        }
+
+                        logger.debug(
+                            f"Velocity boost for '{trend.title[:30]}': "
+                            f"{original_score:.1f} → {trend.score:.1f} "
+                            f"(accel={velocity_change_rate*100:.0f}%)"
+                        )
+
+        return trends
+
+    def _apply_category_balancing(self, trends: List[Trend]) -> List[Trend]:
+        """
+        Balance trends across categories to ensure diversity.
+
+        Prevents any single category from dominating the results.
+
+        Args:
+            trends: Already sorted trends
+
+        Returns:
+            Reordered trends with category balancing
+        """
+        from collections import defaultdict
+
+        # Track category counts
+        category_counts = defaultdict(int)
+        balanced_trends = []
+
+        # Maximum trends per category (proportional to total)
+        max_per_category = max(3, len(trends) // 4)
+
+        # First pass: include trends up to category limit
+        remaining_trends = []
+
+        for trend in trends:
+            category = trend.category
+
+            if category_counts[category] < max_per_category:
+                balanced_trends.append(trend)
+                category_counts[category] += 1
             else:
-                return TrendState.EMERGING
-        elif age < timedelta(days=1):
-            return TrendState.SUSTAINED
-        elif age < timedelta(days=3):
-            return TrendState.DECLINING
-        else:
-            return TrendState.DEAD
+                remaining_trends.append(trend)
+
+        # Second pass: add remaining trends
+        balanced_trends.extend(remaining_trends)
+
+        logger.debug(
+            f"Category balancing: {dict(category_counts)} "
+            f"(max per category: {max_per_category})"
+        )
+
+        return balanced_trends
 
 
 class RankerStage(BaseProcessingStage):

@@ -35,6 +35,9 @@ class HDBSCANClusterer(BaseClusterer):
         llm_service: Optional[BaseLLMService] = None,
         min_cluster_size: int = 2,
         min_samples: int = 1,
+        cluster_selection_epsilon: float = 0.0,
+        cluster_selection_method: str = "eom",
+        prediction_data: bool = True,
     ):
         """
         Initialize HDBSCAN clusterer.
@@ -44,11 +47,18 @@ class HDBSCANClusterer(BaseClusterer):
             llm_service: Optional LLM service for category assignment
             min_cluster_size: Minimum items per cluster (default: 2)
             min_samples: Minimum samples for core point (default: 1)
+            cluster_selection_epsilon: Distance threshold for cluster merging (default: 0.0)
+            cluster_selection_method: Method for selecting clusters: 'eom' or 'leaf' (default: 'eom')
+            prediction_data: Whether to generate prediction data for soft clustering (default: True)
         """
         self._embedding_service = embedding_service
         self._llm_service = llm_service
         self._min_cluster_size = min_cluster_size
         self._min_samples = min_samples
+        self._cluster_selection_epsilon = cluster_selection_epsilon
+        self._cluster_selection_method = cluster_selection_method
+        self._prediction_data = prediction_data
+        self._last_clusterer = None  # Store last clusterer for analysis
 
     async def cluster(
         self,
@@ -88,37 +98,91 @@ class HDBSCANClusterer(BaseClusterer):
         # Convert to numpy array
         embeddings_array = np.array(embeddings)
 
-        # Perform HDBSCAN clustering
+        # Perform HDBSCAN clustering with advanced features
         clusterer = hdbscan.HDBSCAN(
             min_cluster_size=min_cluster_size,
             min_samples=self._min_samples,
             metric="euclidean",  # Use euclidean for normalized embeddings
-            cluster_selection_method="eom",  # Excess of mass (default)
+            cluster_selection_method=self._cluster_selection_method,
+            cluster_selection_epsilon=self._cluster_selection_epsilon,
+            prediction_data=self._prediction_data,  # Enable soft clustering
         )
 
         cluster_labels = clusterer.fit_predict(embeddings_array)
 
-        # Group items by cluster
+        # Store clusterer for advanced analysis
+        self._last_clusterer = clusterer
+
+        # Get cluster membership probabilities (soft clustering)
+        probabilities = clusterer.probabilities_
+
+        # Get outlier scores
+        outlier_scores = clusterer.outlier_scores_
+
+        logger.info(
+            f"HDBSCAN clustering complete: {len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)} "
+            f"clusters found, {sum(cluster_labels == -1)} outliers"
+        )
+
+        # Group items by cluster with metadata
         clusters: dict[int, List[ProcessedItem]] = {}
-        for item, label in zip(items, cluster_labels):
+        cluster_metadata: dict[int, dict] = {}
+
+        for item, label, prob, outlier_score in zip(
+            items, cluster_labels, probabilities, outlier_scores
+        ):
             if label not in clusters:
                 clusters[label] = []
-            clusters[label].append(item)
+                cluster_metadata[label] = {
+                    "probabilities": [],
+                    "outlier_scores": [],
+                }
 
-        # Create topics from clusters
+            clusters[label].append(item)
+            cluster_metadata[label]["probabilities"].append(float(prob))
+            cluster_metadata[label]["outlier_scores"].append(float(outlier_score))
+
+        # Create topics from clusters with advanced metadata
         topics = []
         for label, cluster_items in clusters.items():
+            metadata = cluster_metadata[label]
+
+            # Calculate cluster quality metrics
+            avg_probability = np.mean(metadata["probabilities"])
+            avg_outlier_score = np.mean(metadata["outlier_scores"])
+
             if label == -1:
                 # Noise cluster - optionally split or group
-                logger.info(f"Found {len(cluster_items)} noise items (cluster -1)")
+                logger.info(
+                    f"Found {len(cluster_items)} noise items (cluster -1, "
+                    f"avg_outlier_score={avg_outlier_score:.3f})"
+                )
                 # For now, create a single "miscellaneous" topic
                 if cluster_items:
                     topic = await self._create_topic_from_items(cluster_items, label)
                     topic.title = "Miscellaneous"
                     topic.category = Category.OTHER
+                    topic.metadata.update({
+                        "cluster_id": label,
+                        "avg_membership_probability": avg_probability,
+                        "avg_outlier_score": avg_outlier_score,
+                        "is_noise_cluster": True,
+                    })
                     topics.append(topic)
             else:
                 topic = await self._create_topic_from_items(cluster_items, label)
+                topic.metadata.update({
+                    "cluster_id": label,
+                    "avg_membership_probability": avg_probability,
+                    "avg_outlier_score": avg_outlier_score,
+                    "is_noise_cluster": False,
+                })
+
+                logger.debug(
+                    f"Cluster {label}: {len(cluster_items)} items, "
+                    f"prob={avg_probability:.3f}, outlier={avg_outlier_score:.3f}"
+                )
+
                 topics.append(topic)
 
         logger.info(
@@ -168,6 +232,124 @@ Respond with only the category name."""
 
         # Fallback: use keyword-based heuristic
         return self._assign_category_heuristic(topic)
+
+    def get_cluster_persistence(self, cluster_id: int) -> Optional[float]:
+        """
+        Get persistence score for a cluster.
+
+        Persistence indicates cluster stability - higher values mean
+        more stable/persistent clusters.
+
+        Args:
+            cluster_id: Cluster label to analyze
+
+        Returns:
+            Persistence score (0-1) or None if not available
+        """
+        if self._last_clusterer is None:
+            logger.warning("No clusterer available for persistence analysis")
+            return None
+
+        try:
+            # Get condensed tree
+            condensed_tree = self._last_clusterer.condensed_tree_
+
+            # Find cluster in condensed tree
+            cluster_data = condensed_tree[condensed_tree["child"] == cluster_id]
+
+            if len(cluster_data) == 0:
+                return None
+
+            # Persistence is the lambda value range
+            lambda_birth = cluster_data["lambda_val"].min()
+            lambda_death = cluster_data["lambda_val"].max()
+            persistence = lambda_death - lambda_birth
+
+            return float(persistence)
+
+        except Exception as e:
+            logger.warning(f"Failed to compute persistence for cluster {cluster_id}: {e}")
+            return None
+
+    def get_cluster_stability(self, cluster_id: int) -> Optional[float]:
+        """
+        Get stability score for a cluster.
+
+        Stability scores help determine cluster quality and robustness.
+
+        Args:
+            cluster_id: Cluster label to analyze
+
+        Returns:
+            Stability score or None if not available
+        """
+        if self._last_clusterer is None:
+            logger.warning("No clusterer available for stability analysis")
+            return None
+
+        try:
+            # Get cluster tree
+            cluster_tree = self._last_clusterer.cluster_persistence_
+
+            # Find stability for this cluster
+            if hasattr(cluster_tree, "iloc"):
+                # Pandas DataFrame
+                cluster_row = cluster_tree[cluster_tree.index == cluster_id]
+                if not cluster_row.empty:
+                    return float(cluster_row.iloc[0])
+            elif isinstance(cluster_tree, dict):
+                return cluster_tree.get(cluster_id)
+
+            return None
+
+        except Exception as e:
+            logger.warning(f"Failed to compute stability for cluster {cluster_id}: {e}")
+            return None
+
+    def get_clustering_quality_metrics(self) -> Dict[str, float]:
+        """
+        Get overall clustering quality metrics.
+
+        Returns:
+            Dictionary with quality metrics including:
+            - num_clusters: Number of clusters found
+            - num_outliers: Number of outlier points
+            - avg_cluster_size: Average cluster size
+            - outlier_ratio: Ratio of outliers to total points
+            - avg_probability: Average membership probability
+        """
+        if self._last_clusterer is None:
+            logger.warning("No clusterer available for quality analysis")
+            return {}
+
+        try:
+            labels = self._last_clusterer.labels_
+            probabilities = self._last_clusterer.probabilities_
+
+            num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+            num_outliers = sum(labels == -1)
+            total_points = len(labels)
+
+            # Calculate cluster sizes
+            cluster_sizes = []
+            for label in set(labels):
+                if label != -1:
+                    cluster_sizes.append(sum(labels == label))
+
+            return {
+                "num_clusters": num_clusters,
+                "num_outliers": num_outliers,
+                "total_points": total_points,
+                "avg_cluster_size": np.mean(cluster_sizes) if cluster_sizes else 0,
+                "outlier_ratio": num_outliers / total_points if total_points > 0 else 0,
+                "avg_probability": float(np.mean(probabilities)),
+                "min_probability": float(np.min(probabilities)),
+                "max_probability": float(np.max(probabilities)),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to compute clustering quality metrics: {e}")
+            return {}
 
     async def extract_keywords(
         self, topic: Topic, max_keywords: int = 10

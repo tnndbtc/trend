@@ -186,6 +186,28 @@ app.add_middleware(
 )
 
 
+# Rate limiting configuration
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=[
+        os.getenv("RATE_LIMIT_DEFAULT", "100/minute"),  # Default rate limit
+        os.getenv("RATE_LIMIT_DEFAULT_HOUR", "1000/hour"),  # Hourly limit
+    ],
+    storage_uri=f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', '6380')}",
+    enabled=os.getenv("ENABLE_RATE_LIMITING", "true").lower() == "true",
+)
+
+# Add rate limiter to app state
+app.state.limiter = limiter
+
+# Add rate limit exceeded handler
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
 # Exception handlers
 
 @app.exception_handler(StarletteHTTPException)
@@ -302,10 +324,27 @@ except ImportError as e:
     logger.warning(f"Admin router not available: {e}")
 
 try:
+    from api.routers import workflows
+    app.include_router(workflows.router, prefix="/api/v1")
+    logger.info("✅ Workflows endpoint registered at /api/v1/workflows")
+except ImportError as e:
+    logger.warning(f"Workflows router not available: {e}")
+
+try:
     from api.routers import ws
     app.include_router(ws.router)
 except ImportError as e:
     logger.warning(f"WebSocket router not available: {e}")
+
+try:
+    from strawberry.fastapi import GraphQLRouter
+    from api.graphql import schema
+
+    graphql_app = GraphQLRouter(schema)
+    app.include_router(graphql_app, prefix="/graphql")
+    logger.info("✅ GraphQL endpoint registered at /graphql")
+except ImportError as e:
+    logger.warning(f"GraphQL router not available: {e}")
 
 
 # Make app_state accessible to routers
