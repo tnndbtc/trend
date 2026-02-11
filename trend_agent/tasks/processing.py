@@ -83,8 +83,11 @@ async def _process_pending_items_async(limit: int) -> Dict[str, Any]:
     )
     from trend_agent.storage.qdrant import QdrantVectorRepository
     from trend_agent.processing import create_standard_pipeline
-    from tests.mocks.intelligence import MockEmbeddingService, MockLLMService
     import os
+
+    # Check if we should use real AI services
+    use_real_services = os.getenv("USE_REAL_AI_SERVICES", "false").lower() in ("true", "1", "yes")
+    llm_provider = os.getenv("LLM_PROVIDER", "openai")
 
     # Connect to database
     db_pool = PostgreSQLConnectionPool(
@@ -113,9 +116,19 @@ async def _process_pending_items_async(limit: int) -> Dict[str, Any]:
                 "timestamp": datetime.utcnow().isoformat(),
             }
 
-        # Initialize services (use mock for now, replace with real services in production)
-        embedding_service = MockEmbeddingService()
-        llm_service = MockLLMService()
+        # Initialize AI services (real or mock based on configuration)
+        if use_real_services:
+            logger.info(f"Using real AI services (LLM provider: {llm_provider})")
+            from trend_agent.services import ServiceFactory
+            service_factory = ServiceFactory()
+            embedding_service = service_factory.get_embedding_service()
+            llm_service = service_factory.get_llm_service(provider=llm_provider)
+        else:
+            logger.info("Using mock AI services for testing")
+            from tests.mocks.intelligence import MockEmbeddingService, MockLLMService
+            embedding_service = MockEmbeddingService()
+            llm_service = MockLLMService()
+            service_factory = None
 
         # Initialize vector repository for storing embeddings
         vector_repo = QdrantVectorRepository(
@@ -217,6 +230,9 @@ async def _process_pending_items_async(limit: int) -> Dict[str, Any]:
         }
 
     finally:
+        # Clean up resources
+        if service_factory:
+            await service_factory.close()
         await db_pool.close()
 
 
@@ -342,8 +358,10 @@ async def _generate_embeddings_async(item_ids: Optional[List[str]], limit: int) 
         PostgreSQLItemRepository,
     )
     from trend_agent.storage.qdrant import QdrantVectorRepository
-    from tests.mocks.intelligence import MockEmbeddingService
     import os
+
+    # Check if we should use real AI services
+    use_real_services = os.getenv("USE_REAL_AI_SERVICES", "false").lower() in ("true", "1", "yes")
 
     # Connect to databases
     db_pool = PostgreSQLConnectionPool(
@@ -375,8 +393,18 @@ async def _generate_embeddings_async(item_ids: Optional[List[str]], limit: int) 
                 "timestamp": datetime.utcnow().isoformat(),
             }
 
-        # Generate embeddings
-        embedding_service = MockEmbeddingService()
+        # Initialize embedding service (real or mock)
+        if use_real_services:
+            logger.info("Using real OpenAI embedding service")
+            from trend_agent.services import ServiceFactory
+            service_factory = ServiceFactory()
+            embedding_service = service_factory.get_embedding_service()
+        else:
+            logger.info("Using mock embedding service for testing")
+            from tests.mocks.intelligence import MockEmbeddingService
+            embedding_service = MockEmbeddingService()
+            service_factory = None
+
         embeddings_created = 0
 
         for item in items[:limit]:
@@ -404,6 +432,9 @@ async def _generate_embeddings_async(item_ids: Optional[List[str]], limit: int) 
         }
 
     finally:
+        # Clean up resources
+        if service_factory:
+            await service_factory.close()
         await db_pool.close()
 
 
@@ -448,8 +479,12 @@ async def _test_pipeline_async(sample_size: int) -> Dict[str, Any]:
     """
     from trend_agent.processing import create_standard_pipeline
     from trend_agent.types import RawItem, SourceType, Metrics
-    from tests.mocks.intelligence import MockEmbeddingService, MockLLMService
     from pydantic import HttpUrl
+    import os
+
+    # Check if we should use real AI services
+    use_real_services = os.getenv("USE_REAL_AI_SERVICES", "false").lower() in ("true", "1", "yes")
+    llm_provider = os.getenv("LLM_PROVIDER", "openai")
 
     # Create sample items
     raw_items = []
@@ -465,25 +500,43 @@ async def _test_pipeline_async(sample_size: int) -> Dict[str, Any]:
         )
         raw_items.append(item)
 
-    # Run pipeline
-    embedding_service = MockEmbeddingService()
-    llm_service = MockLLMService()
-    pipeline = create_standard_pipeline(embedding_service, llm_service)
+    # Initialize AI services (real or mock)
+    if use_real_services:
+        logger.info(f"Testing pipeline with real AI services (LLM: {llm_provider})")
+        from trend_agent.services import ServiceFactory
+        service_factory = ServiceFactory()
+        embedding_service = service_factory.get_embedding_service()
+        llm_service = service_factory.get_llm_service(provider=llm_provider)
+    else:
+        logger.info("Testing pipeline with mock AI services")
+        from tests.mocks.intelligence import MockEmbeddingService, MockLLMService
+        embedding_service = MockEmbeddingService()
+        llm_service = MockLLMService()
+        service_factory = None
 
-    start_time = datetime.utcnow()
-    result = await pipeline.run(raw_items)
-    duration = (datetime.utcnow() - start_time).total_seconds()
+    try:
+        # Run pipeline
+        pipeline = create_standard_pipeline(embedding_service, llm_service)
 
-    trends = result.metadata.get("trends", [])
+        start_time = datetime.utcnow()
+        result = await pipeline.run(raw_items)
+        duration = (datetime.utcnow() - start_time).total_seconds()
 
-    return {
-        "success": True,
-        "items_processed": result.items_collected,
-        "trends_created": result.trends_created,
-        "duration_seconds": duration,
-        "status": result.status.value,
-        "timestamp": datetime.utcnow().isoformat(),
-    }
+        trends = result.metadata.get("trends", [])
+
+        return {
+            "success": True,
+            "items_processed": result.items_collected,
+            "trends_created": result.trends_created,
+            "duration_seconds": duration,
+            "status": result.status.value,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+    finally:
+        # Clean up resources
+        if service_factory:
+            await service_factory.close()
 
 
 # Utility functions

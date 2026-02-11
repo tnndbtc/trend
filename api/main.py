@@ -265,6 +265,13 @@ except ImportError as e:
     logger.warning(f"Health router not available: {e}")
 
 try:
+    from api.routers import metrics
+    app.include_router(metrics.router)  # No prefix - metrics at /metrics
+    logger.info("✅ Metrics endpoint registered at /metrics")
+except ImportError as e:
+    logger.warning(f"Metrics router not available: {e}")
+
+try:
     from api.routers import trends
     app.include_router(trends.router, prefix="/api/v1")
 except ImportError as e:
@@ -281,6 +288,12 @@ try:
     app.include_router(search.router, prefix="/api/v1")
 except ImportError as e:
     logger.warning(f"Search router not available: {e}")
+
+try:
+    from api.routers import translation
+    app.include_router(translation.router, prefix="/api/v1")
+except ImportError as e:
+    logger.warning(f"Translation router not available: {e}")
 
 try:
     from api.routers import admin

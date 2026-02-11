@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from uuid import UUID
 
+from trend_agent.services import ServiceFactory
 from trend_agent.storage.postgres import (
     PostgreSQLConnectionPool,
     PostgreSQLItemRepository,
@@ -44,6 +45,8 @@ class TrendIntelligenceOrchestrator:
         postgres_config: Optional[Dict[str, Any]] = None,
         qdrant_config: Optional[Dict[str, Any]] = None,
         redis_config: Optional[Dict[str, Any]] = None,
+        use_real_ai_services: bool = True,
+        llm_provider: str = "openai",
     ):
         """
         Initialize the orchestrator with storage configurations.
@@ -52,6 +55,8 @@ class TrendIntelligenceOrchestrator:
             postgres_config: PostgreSQL connection config
             qdrant_config: Qdrant connection config
             redis_config: Redis connection config
+            use_real_ai_services: Use real AI services (True) or mocks (False)
+            llm_provider: LLM provider to use ("openai" or "anthropic")
         """
         # Use environment variables as defaults
         self.postgres_config = postgres_config or {
@@ -84,10 +89,18 @@ class TrendIntelligenceOrchestrator:
         # Processing components
         self.plugin_manager: Optional[DefaultPluginManager] = None
 
-        logger.info("TrendIntelligenceOrchestrator initialized")
+        # AI Services
+        self.use_real_ai_services = use_real_ai_services
+        self.llm_provider = llm_provider
+        self.service_factory: Optional[ServiceFactory] = None
+
+        logger.info(
+            f"TrendIntelligenceOrchestrator initialized "
+            f"(real_services={use_real_ai_services}, llm_provider={llm_provider})"
+        )
 
     async def connect(self):
-        """Connect to all storage backends."""
+        """Connect to all storage backends and initialize AI services."""
         logger.info("Connecting to storage backends...")
 
         # PostgreSQL
@@ -120,10 +133,17 @@ class TrendIntelligenceOrchestrator:
         await self.plugin_manager.load_plugins()
         logger.info("✅ Plugin manager initialized")
 
-        logger.info("All storage backends connected successfully")
+        # AI Services
+        if self.use_real_ai_services:
+            self.service_factory = ServiceFactory()
+            logger.info(f"✅ AI service factory initialized (LLM provider: {self.llm_provider})")
+        else:
+            logger.info("✅ Using mock AI services for testing")
+
+        logger.info("All storage backends and services connected successfully")
 
     async def disconnect(self):
-        """Disconnect from all storage backends."""
+        """Disconnect from all storage backends and clean up services."""
         logger.info("Disconnecting from storage backends...")
 
         if self.db_pool:
@@ -132,8 +152,10 @@ class TrendIntelligenceOrchestrator:
             await self.cache_repo.close()
         if self.vector_repo:
             self.vector_repo.client.close()
+        if self.service_factory:
+            await self.service_factory.close()
 
-        logger.info("Disconnected from all storage backends")
+        logger.info("Disconnected from all storage backends and services")
 
     async def collect_from_plugin(self, plugin_name: str) -> Dict[str, Any]:
         """
@@ -262,10 +284,16 @@ class TrendIntelligenceOrchestrator:
 
         logger.info(f"Found {len(pending_items)} pending items")
 
-        # Initialize mock services (replace with real in production)
-        from tests.mocks.intelligence import MockEmbeddingService, MockLLMService
-        embedding_service = MockEmbeddingService()
-        llm_service = MockLLMService()
+        # Get AI services (real or mock)
+        if self.use_real_ai_services and self.service_factory:
+            logger.info(f"Using real AI services (LLM provider: {self.llm_provider})")
+            embedding_service = self.service_factory.get_embedding_service()
+            llm_service = self.service_factory.get_llm_service(provider=self.llm_provider)
+        else:
+            logger.info("Using mock AI services for testing")
+            from tests.mocks.intelligence import MockEmbeddingService, MockLLMService
+            embedding_service = MockEmbeddingService()
+            llm_service = MockLLMService()
 
         # Create pipeline
         pipeline = create_standard_pipeline(embedding_service, llm_service)
