@@ -1,0 +1,58 @@
+# Observability Dependencies for Trend Intelligence Platform
+# Session 6: Monitoring, Metrics, Logging, and Alerting
+
+# ============================================================================
+# Prometheus Metrics
+# ============================================================================
+
+# Prometheus Python client for metrics collection and export
+prometheus-client==0.19.0
+
+# System metrics (CPU, memory, disk)
+psutil==5.9.6
+
+# ============================================================================
+# Structured Logging
+# ============================================================================
+
+# Python-json-logger for JSON log formatting (alternative to custom formatter)
+python-json-logger==2.0.7
+
+# Loguru - Advanced logging with rotation and formatting (optional alternative)
+# loguru==0.7.2
+
+# ============================================================================
+# Monitoring Integration
+# ============================================================================
+
+# OpenTelemetry for distributed tracing (optional, for future expansion)
+# opentelemetry-api==1.21.0
+# opentelemetry-sdk==1.21.0
+# opentelemetry-instrumentation-fastapi==0.42b0
+# opentelemetry-exporter-prometheus==0.42b0
+
+# ============================================================================
+# Alerting (optional - if using Python-based alerting instead of Alertmanager)
+# ============================================================================
+
+# Requests for webhook notifications
+requests==2.31.0
+
+# ============================================================================
+# Testing
+# ============================================================================
+
+# For testing metrics and logging
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# ============================================================================
+# Additional Utilities
+# ============================================================================
+
+# For environment variable management
+python-dotenv==1.0.0
+
+# YAML parsing for config files
+PyYAML==6.0.1

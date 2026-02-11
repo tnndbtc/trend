@@ -1,0 +1,207 @@
+# Alert Rules for Trend Intelligence Platform
+# Define conditions that trigger alerts
+
+groups:
+  # API Alerts
+  - name: api_alerts
+    interval: 30s
+    rules:
+      - alert: HighAPIErrorRate
+        expr: api:error_rate > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "High API error rate detected"
+          description: "API error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      - alert: HighAPILatency
+        expr: api:request_duration_p95 > 2.0
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High API latency detected"
+          description: "95th percentile API latency is {{ $value }}s (threshold: 2s)"
+
+      - alert: APIDown
+        expr: up{job="trend-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "API is down"
+          description: "The Trend API is not responding"
+
+  # Celery Task Alerts
+  - name: celery_alerts
+    interval: 30s
+    rules:
+      - alert: HighTaskFailureRate
+        expr: celery:failure_rate > 0.10
+        for: 10m
+        labels:
+          severity: warning
+          component: celery
+        annotations:
+          summary: "High Celery task failure rate"
+          description: "Task failure rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+
+      - alert: TaskQueueBacklog
+        expr: celery_queue_length > 1000
+        for: 15m
+        labels:
+          severity: warning
+          component: celery
+        annotations:
+          summary: "Large task queue backlog"
+          description: "Queue {{ $labels.queue_name }} has {{ $value }} tasks waiting"
+
+      - alert: NoActiveCeleryWorkers
+        expr: celery_active_tasks == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: celery
+        annotations:
+          summary: "No active Celery workers"
+          description: "No Celery workers are processing tasks"
+
+      - alert: LongRunningTask
+        expr: celery_task_duration_seconds > 1800
+        for: 5m
+        labels:
+          severity: warning
+          component: celery
+        annotations:
+          summary: "Long-running Celery task detected"
+          description: "Task {{ $labels.task_name }} has been running for {{ $value }}s"
+
+  # Database Alerts
+  - name: database_alerts
+    interval: 30s
+    rules:
+      - alert: PostgreSQLDown
+        expr: up{job="postgresql"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database is not responding"
+
+      - alert: LowDatabaseConnections
+        expr: db_connection_pool_available < 2
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Low available database connections"
+          description: "Only {{ $value }} database connections available"
+
+      - alert: SlowDatabaseQueries
+        expr: histogram_quantile(0.95, rate(db_query_duration_seconds_bucket[5m])) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Slow database queries detected"
+          description: "95th percentile query time is {{ $value }}s (threshold: 1s)"
+
+  # Redis Alerts
+  - name: redis_alerts
+    interval: 30s
+    rules:
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache is not responding"
+
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.90
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis high memory usage"
+          description: "Redis is using {{ $value | humanizePercentage }} of available memory"
+
+  # System Resource Alerts
+  - name: system_alerts
+    interval: 30s
+    rules:
+      - alert: HighCPUUsage
+        expr: system_cpu_usage_percent > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value }}% (threshold: 80%)"
+
+      - alert: HighMemoryUsage
+        expr: system_memory_usage_percent > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}% (threshold: 85%)"
+
+      - alert: LowDiskSpace
+        expr: system_disk_usage_percent > 90
+        for: 5m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "Low disk space"
+          description: "Disk usage is {{ $value }}% (threshold: 90%)"
+
+  # Business Metric Alerts
+  - name: business_alerts
+    interval: 1m
+    rules:
+      - alert: NoDataCollection
+        expr: rate(items_collected_total[10m]) == 0
+        for: 15m
+        labels:
+          severity: warning
+          component: collection
+        annotations:
+          summary: "No data being collected"
+          description: "No items have been collected in the last 15 minutes"
+
+      - alert: NoTrendsCreated
+        expr: rate(trends_created_total[1h]) == 0
+        for: 2h
+        labels:
+          severity: warning
+          component: processing
+        annotations:
+          summary: "No trends being created"
+          description: "No trends have been created in the last 2 hours"
+
+      - alert: LowCollectionRate
+        expr: rate(items_collected_total[5m]) < 0.1
+        for: 30m
+        labels:
+          severity: info
+          component: collection
+        annotations:
+          summary: "Low collection rate"
+          description: "Collection rate is {{ $value }} items/sec (expected > 0.1)"
