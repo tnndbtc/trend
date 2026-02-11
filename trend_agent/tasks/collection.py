@@ -114,28 +114,16 @@ async def _collect_from_plugin_async(plugin_name: str) -> Dict[str, Any]:
 
     # Save items
     try:
+        from trend_agent.ingestion.converters import batch_raw_to_processed
+
         item_repo = PostgreSQLItemRepository(db_pool.pool)
         saved_count = 0
 
-        for raw_item in raw_items:
-            # Convert RawItem to ProcessedItem
-            from trend_agent.types import ProcessedItem
+        # Convert RawItems to ProcessedItems with minimal processing
+        # Full processing will happen later in the processing pipeline
+        processed_items = batch_raw_to_processed(raw_items)
 
-            processed_item = ProcessedItem(
-                source=raw_item.source,
-                source_id=raw_item.source_id,
-                url=raw_item.url,
-                title=raw_item.title,
-                title_normalized=raw_item.title,  # Will be normalized in processing
-                description=raw_item.description,
-                content=raw_item.content,
-                author=raw_item.author,
-                published_at=raw_item.published_at,
-                collected_at=raw_item.collected_at,
-                metrics=raw_item.metrics,
-                metadata=raw_item.metadata,
-            )
-
+        for processed_item in processed_items:
             await item_repo.save(processed_item)
             saved_count += 1
 

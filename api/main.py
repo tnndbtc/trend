@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
 
         app_state.db_pool = PostgreSQLConnectionPool(
             host=os.getenv("POSTGRES_HOST", "localhost"),
-            port=int(os.getenv("POSTGRES_PORT", "5432")),
+            port=int(os.getenv("POSTGRES_PORT", "5433")),  # Updated to match Docker config
             database=os.getenv("POSTGRES_DB", "trends"),
             user=os.getenv("POSTGRES_USER", "trend_user"),
             password=os.getenv("POSTGRES_PASSWORD", "trend_password"),
@@ -81,8 +81,8 @@ async def lifespan(app: FastAPI):
 
         app_state.redis_cache = RedisCacheRepository(
             host=os.getenv("REDIS_HOST", "localhost"),
-            port=int(os.getenv("REDIS_PORT", "6379")),
-            password=os.getenv("REDIS_PASSWORD", ""),
+            port=int(os.getenv("REDIS_PORT", "6380")),  # Updated to match Docker config
+            password=os.getenv("REDIS_PASSWORD", None),
             default_ttl=3600,
         )
         await app_state.redis_cache.connect()

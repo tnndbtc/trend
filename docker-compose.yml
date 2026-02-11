@@ -170,7 +170,7 @@ services:
     image: postgres:16-alpine
     container_name: trend-postgres
     ports:
-      - "5432:5432"
+      - "5433:5432"  # Changed to 5433 to avoid conflict
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-trends}
       - POSTGRES_USER=${POSTGRES_USER:-trend_user}
@@ -212,7 +212,7 @@ services:
     image: redis:7-alpine
     container_name: trend-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"  # Changed to 6380 to avoid conflict
     command: redis-server --appendonly yes ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}
     volumes:
       - redis-data:/data

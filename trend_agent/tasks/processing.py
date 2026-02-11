@@ -81,6 +81,7 @@ async def _process_pending_items_async(limit: int) -> Dict[str, Any]:
         PostgreSQLTrendRepository,
         PostgreSQLTopicRepository,
     )
+    from trend_agent.storage.qdrant import QdrantVectorRepository
     from trend_agent.processing import create_standard_pipeline
     from tests.mocks.intelligence import MockEmbeddingService, MockLLMService
     import os
@@ -98,11 +99,9 @@ async def _process_pending_items_async(limit: int) -> Dict[str, Any]:
     try:
         # Get pending items (items collected in last 24 hours that haven't been processed)
         item_repo = PostgreSQLItemRepository(db_pool.pool)
-        cutoff_time = datetime.utcnow() - timedelta(hours=24)
 
-        # TODO: Add method to get pending items from repository
-        # For now, using mock items for demonstration
-        pending_items: List[ProcessedItem] = []
+        # Fetch items that need full processing from the database
+        pending_items = await item_repo.get_pending_items(limit=limit, hours_back=24)
 
         if not pending_items:
             logger.info("No pending items to process")
@@ -117,6 +116,13 @@ async def _process_pending_items_async(limit: int) -> Dict[str, Any]:
         # Initialize services (use mock for now, replace with real services in production)
         embedding_service = MockEmbeddingService()
         llm_service = MockLLMService()
+
+        # Initialize vector repository for storing embeddings
+        vector_repo = QdrantVectorRepository(
+            host=os.getenv("QDRANT_HOST", "localhost"),
+            port=int(os.getenv("QDRANT_PORT", "6333")),
+            collection_name="trend_items"
+        )
 
         # Create and run pipeline
         pipeline = create_standard_pipeline(embedding_service, llm_service)
@@ -144,6 +150,38 @@ async def _process_pending_items_async(limit: int) -> Dict[str, Any]:
 
         pipeline_result = await pipeline.run(raw_items)
 
+        # Extract processed items with enrichments from pipeline
+        # Pipeline stores processed items in metadata
+        processed_with_enrichments = pipeline_result.metadata.get('processed_items', [])
+
+        # Update items in database with enriched data (normalized text, language, category, etc.)
+        items_updated = 0
+        embeddings_saved = 0
+
+        for enriched_item in processed_with_enrichments:
+            # Update the item in the database with enriched data
+            await item_repo.save(enriched_item)
+            items_updated += 1
+
+            # Save embeddings to Qdrant if available
+            if enriched_item.embedding:
+                try:
+                    await vector_repo.upsert(
+                        id=str(enriched_item.id),
+                        vector=enriched_item.embedding,
+                        payload={
+                            "source": enriched_item.source.value,
+                            "source_id": enriched_item.source_id,
+                            "title": enriched_item.title,
+                            "language": enriched_item.language,
+                            "category": enriched_item.category.value if enriched_item.category else None,
+                            "published_at": enriched_item.published_at.isoformat(),
+                        }
+                    )
+                    embeddings_saved += 1
+                except Exception as e:
+                    logger.warning(f"Failed to save embedding for item {enriched_item.id}: {e}")
+
         # Extract trends from pipeline result
         trends: List[Trend] = pipeline_result.metadata.get("trends", [])
         topics: List[Topic] = pipeline_result.metadata.get("_clustered_topics", [])
@@ -169,6 +207,8 @@ async def _process_pending_items_async(limit: int) -> Dict[str, Any]:
 
         return {
             "items_processed": len(pending_items),
+            "items_updated": items_updated,
+            "embeddings_saved": embeddings_saved,
             "topics_created": topics_saved,
             "trends_created": trends_saved,
             "duration_seconds": duration,

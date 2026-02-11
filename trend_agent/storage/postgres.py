@@ -191,6 +191,13 @@ def _row_to_topic(row: asyncpg.Record) -> Topic:
 
 def _row_to_processed_item(row: asyncpg.Record) -> ProcessedItem:
     """Convert database row to ProcessedItem object."""
+    # Parse metadata if it's a JSON string
+    metadata = row["metadata"]
+    if isinstance(metadata, str):
+        metadata = json.loads(metadata) if metadata else {}
+    elif metadata is None:
+        metadata = {}
+
     return ProcessedItem(
         id=row["id"],
         source=SourceType(row["source"]),
@@ -207,7 +214,7 @@ def _row_to_processed_item(row: asyncpg.Record) -> ProcessedItem:
         metrics=_jsonb_to_metrics(row["metrics"]),
         published_at=row["published_at"],
         collected_at=row["collected_at"],
-        metadata=row["metadata"] or {},
+        metadata=metadata,
     )
 
 
@@ -949,3 +956,48 @@ class PostgreSQLItemRepository:
         except Exception as e:
             logger.error(f"Failed to delete old items: {e}")
             raise StorageError(f"Failed to delete old items: {e}")
+
+    async def get_pending_items(
+        self,
+        limit: int = 1000,
+        hours_back: int = 24
+    ) -> List[ProcessedItem]:
+        """
+        Get items that need full processing.
+
+        Fetches items that were minimally processed during collection
+        and need to go through the full processing pipeline.
+
+        Args:
+            limit: Maximum number of items to return
+            hours_back: Only get items from last N hours
+
+        Returns:
+            List of ProcessedItem objects needing processing
+
+        Raises:
+            StorageError: If query fails
+        """
+        try:
+            query = """
+                SELECT *
+                FROM processed_items
+                WHERE
+                    collected_at > NOW() - INTERVAL '%s hours'
+                    AND (
+                        metadata->>'processing_status' = 'pending'
+                        OR metadata->>'minimal_processing' = 'true'
+                    )
+                    AND content_normalized IS NULL
+                ORDER BY collected_at DESC
+                LIMIT $1
+            """
+            rows = await self.pool.fetch(query % hours_back, limit)
+
+            items = [_row_to_processed_item(row) for row in rows]
+            logger.info(f"Retrieved {len(items)} pending items for processing")
+            return items
+
+        except Exception as e:
+            logger.error(f"Failed to get pending items: {e}")
+            raise StorageError(f"Failed to get pending items: {e}")

@@ -17,6 +17,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from trend_agent.ingestion.base import CollectorPlugin, PluginRegistry
 from trend_agent.ingestion.interfaces import BaseScheduler
+from trend_agent.ingestion.converters import batch_raw_to_processed
 
 logger = logging.getLogger(__name__)
 
@@ -287,9 +288,18 @@ class DefaultScheduler(BaseScheduler):
 
                 # Persist to storage if available
                 if self.storage_repo and validated_items:
-                    # Use mock storage for now (replace with real implementation later)
-                    # await self.storage_repo.save_raw_items(validated_items)
-                    logger.info(f"Persisted {len(validated_items)} items from {plugin_name}")
+                    try:
+                        # Convert RawItems to ProcessedItems with minimal processing
+                        # Full processing will happen later in the processing pipeline
+                        processed_items = batch_raw_to_processed(validated_items)
+
+                        # Save to database (storage_repo should be ItemRepository)
+                        for item in processed_items:
+                            await self.storage_repo.save(item)
+
+                        logger.info(f"Persisted {len(processed_items)} items from {plugin_name} to database")
+                    except Exception as e:
+                        logger.error(f"Failed to persist items from {plugin_name}: {e}", exc_info=True)
 
                 # Call success hook
                 await plugin.on_success(validated_items)
