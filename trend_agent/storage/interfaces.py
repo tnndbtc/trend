@@ -111,6 +111,18 @@ class TrendRepository(Protocol):
         """
         ...
 
+    async def count(self, filters: Optional[TrendFilter] = None) -> int:
+        """
+        Count trends matching filters.
+
+        Args:
+            filters: Optional search filter criteria
+
+        Returns:
+            Number of matching trends
+        """
+        ...
+
 
 class TopicRepository(Protocol):
     """Interface for topic persistence operations."""
@@ -145,6 +157,34 @@ class TopicRepository(Protocol):
         """Get topics containing a specific keyword."""
         ...
 
+    async def count(self) -> int:
+        """
+        Count total topics.
+
+        Returns:
+            Total number of topics
+        """
+        ...
+
+    async def get_items_by_topic(
+        self,
+        topic_id: UUID,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[ProcessedItem]:
+        """
+        Get all items belonging to a topic.
+
+        Args:
+            topic_id: UUID of the topic
+            limit: Maximum number of items to return
+            offset: Number of items to skip
+
+        Returns:
+            List of ProcessedItem objects ordered by added_at DESC
+        """
+        ...
+
 
 class ItemRepository(Protocol):
     """Interface for processed item persistence operations."""
@@ -173,6 +213,27 @@ class ItemRepository(Protocol):
 
     async def delete_older_than(self, days: int) -> int:
         """Delete items older than specified days."""
+        ...
+
+    async def count(self) -> int:
+        """
+        Count total items.
+
+        Returns:
+            Total number of processed items
+        """
+        ...
+
+    async def get_items_without_embeddings(self, limit: int = 100) -> List[ProcessedItem]:
+        """
+        Get items that don't have embeddings yet.
+
+        Args:
+            limit: Maximum number of items to return
+
+        Returns:
+            List of ProcessedItem objects without embeddings
+        """
         ...
 
 

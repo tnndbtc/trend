@@ -18,6 +18,7 @@ from api.dependencies import (
     get_topic_repository,
     get_vector_repository,
     get_cache_repository,
+    get_semantic_search_service,
 )
 from trend_agent.storage.interfaces import (
     TrendRepository,
@@ -25,7 +26,13 @@ from trend_agent.storage.interfaces import (
     VectorRepository,
     CacheRepository,
 )
-from trend_agent.types import Category, SourceType
+from trend_agent.types import (
+    Category,
+    SourceType,
+    SemanticSearchRequest as ServiceSearchRequest,
+    SemanticSearchFilter,
+)
+from trend_agent.services.search import QdrantSemanticSearchService
 
 
 router = APIRouter(prefix="/search", tags=["Search"])
@@ -116,18 +123,80 @@ async def semantic_search(
             detail="Semantic search is currently unavailable. Vector database not connected.",
         )
 
-    # TODO: Implement semantic search
-    # Steps:
-    # 1. Generate embedding for search query using embedding service
-    # 2. Search vector database for similar embeddings
-    # 3. Fetch full trend/topic data for matching IDs
-    # 4. Apply filters (category, sources, language)
-    # 5. Return sorted results
+    try:
+        # Get semantic search service
+        from api.dependencies import get_semantic_search_service as get_search_svc
+        search_service = await get_search_svc(trend_repo, vector_repo)
 
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Semantic search implementation coming soon. Requires embedding service integration.",
-    )
+        # Build filters
+        filters = SemanticSearchFilter()
+        if search_request.category:
+            try:
+                filters.category = Category(search_request.category)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid category: {search_request.category}"
+                )
+
+        if search_request.sources:
+            try:
+                filters.sources = [SourceType(s) for s in search_request.sources]
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid source: {str(e)}"
+                )
+
+        if search_request.language:
+            filters.language = search_request.language
+
+        # Create service search request
+        service_request = ServiceSearchRequest(
+            query=search_request.query,
+            limit=search_request.limit,
+            min_similarity=search_request.min_similarity,
+            filters=filters,
+        )
+
+        # Perform semantic search
+        trends = await search_service.search(service_request)
+
+        # Convert trends to search results
+        results = [
+            SearchResult(
+                type="trend",
+                id=trend.id,
+                title=trend.title,
+                summary=trend.summary,
+                category=trend.category.value,
+                score=trend.score,
+                metadata={
+                    "sources": [s.value for s in trend.sources],
+                    "language": trend.language,
+                    "state": trend.state.value,
+                    "rank": trend.rank,
+                    "item_count": trend.item_count,
+                }
+            )
+            for trend in trends
+        ]
+
+        return SearchResponse(
+            results=results,
+            total=len(results),
+            query=search_request.query,
+            search_type=search_request.search_type,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Semantic search failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Semantic search failed: {str(e)}"
+        )
 
 
 @router.post(

@@ -21,8 +21,11 @@ from trend_agent.storage.postgres import (
     PostgreSQLTrendRepository,
     PostgreSQLTopicRepository,
     PostgreSQLItemRepository,
+    PostgreSQLPluginHealthRepository,
 )
 from trend_agent.ingestion.manager import PluginManager
+from trend_agent.services import get_service_factory
+from trend_agent.services.search import QdrantSemanticSearchService
 
 
 # API Key authentication
@@ -208,6 +211,64 @@ async def get_item_repository(
         PostgreSQL ItemRepository instance
     """
     return PostgreSQLItemRepository(pool)
+
+
+async def get_plugin_health_repository(
+    pool: Pool = Depends(get_db_pool)
+) -> PostgreSQLPluginHealthRepository:
+    """
+    Get PluginHealthRepository instance.
+
+    Args:
+        pool: Database connection pool
+
+    Returns:
+        PostgreSQL PluginHealthRepository instance
+    """
+    return PostgreSQLPluginHealthRepository(pool)
+
+
+# Service dependencies
+
+async def get_semantic_search_service(
+    trend_repository: TrendRepository = Depends(get_trend_repository),
+    vector_repository: VectorRepository = Depends(get_vector_repository),
+) -> QdrantSemanticSearchService:
+    """
+    Get QdrantSemanticSearchService instance.
+
+    Args:
+        trend_repository: Trend repository for fetching full trend objects
+        vector_repository: Qdrant vector repository for similarity search
+
+    Returns:
+        QdrantSemanticSearchService instance
+
+    Raises:
+        HTTPException: If required services are not available
+    """
+    if vector_repository is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Vector database not available"
+        )
+
+    try:
+        # Get service factory and create semantic search service
+        factory = get_service_factory()
+        embedding_service = factory.get_embedding_service()
+
+        return QdrantSemanticSearchService(
+            embedding_service=embedding_service,
+            vector_repository=vector_repository,
+            trend_repository=trend_repository,
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Failed to initialize semantic search service: {str(e)}"
+        )
 
 
 # Pagination dependencies

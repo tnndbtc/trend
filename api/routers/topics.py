@@ -208,6 +208,7 @@ async def get_topic_items(
     offset: int = Query(0, ge=0, description="Number of items to skip"),
     api_key: str = Depends(optional_api_key),
     topic_repo: TopicRepository = Depends(get_topic_repository),
+    cache: Optional[CacheRepository] = Depends(get_cache_repository),
 ) -> List[dict]:
     """
     Get items belonging to a topic.
@@ -220,6 +221,7 @@ async def get_topic_items(
         offset: Number of items to skip
         api_key: Optional API key
         topic_repo: Topic repository
+        cache: Cache repository
 
     Returns:
         List of items in the topic
@@ -227,17 +229,67 @@ async def get_topic_items(
     Raises:
         HTTPException: 404 if topic not found
     """
+    # Check cache first
+    cache_key = f"topics:items:{topic_id}:{limit}:{offset}"
+    if cache:
+        try:
+            cached = await cache.get(cache_key)
+            if cached:
+                return cached
+        except Exception:
+            pass
+
     # Verify topic exists
-    topic = await topic_repo.get_by_id(topic_id)
+    topic = await topic_repo.get(topic_id)
     if topic is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Topic with ID {topic_id} not found",
         )
 
-    # TODO: Implement get_items_by_topic in repository
-    # For now, return placeholder
-    return []
+    # Get items for this topic
+    items = await topic_repo.get_items_by_topic(
+        topic_id=topic_id,
+        limit=limit,
+        offset=offset,
+    )
+
+    # Convert ProcessedItems to dict format
+    items_dict = [
+        {
+            "id": str(item.id),
+            "source": item.source.value,
+            "source_id": item.source_id,
+            "title": item.title,
+            "content": item.content,
+            "url": item.url,
+            "author": item.author,
+            "category": item.category.value,
+            "language": item.language,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+            "processed_at": item.processed_at.isoformat(),
+            "engagement": {
+                "upvotes": item.engagement.upvotes,
+                "downvotes": item.engagement.downvotes,
+                "comments": item.engagement.comments,
+                "shares": item.engagement.shares,
+                "views": item.engagement.views,
+                "score": item.engagement.score,
+            },
+            "keywords": item.keywords,
+            "sentiment_score": item.sentiment_score,
+        }
+        for item in items
+    ]
+
+    # Cache the response
+    if cache:
+        try:
+            await cache.set(cache_key, items_dict, ttl_seconds=600)  # 10 min
+        except Exception:
+            pass
+
+    return items_dict
 
 
 @router.post(

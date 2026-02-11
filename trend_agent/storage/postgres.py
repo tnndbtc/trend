@@ -26,6 +26,7 @@ from trend_agent.storage.interfaces import (
 from trend_agent.types import (
     Category,
     Metrics,
+    PluginHealth,
     ProcessedItem,
     SourceType,
     Topic,
@@ -529,6 +530,77 @@ class PostgreSQLTrendRepository(BaseTrendRepository):
             logger.error(f"Failed to get top trends: {e}")
             raise StorageError(f"Failed to get top trends: {e}")
 
+    async def count(self, filters: Optional[TrendFilter] = None) -> int:
+        """
+        Count trends matching filters.
+
+        Args:
+            filters: Optional search filter criteria
+
+        Returns:
+            Number of matching trends
+        """
+        try:
+            if filters is None:
+                # Count all trends
+                query = "SELECT COUNT(*) FROM trends"
+                return await self.pool.fetchval(query)
+
+            # Build dynamic query based on filters (same logic as search)
+            conditions = []
+            params = []
+            param_count = 0
+
+            if filters.category:
+                param_count += 1
+                conditions.append(f"category = ${param_count}")
+                params.append(filters.category.value)
+
+            if filters.sources:
+                param_count += 1
+                source_values = [s.value for s in filters.sources]
+                conditions.append(f"sources && ${param_count}")
+                params.append(source_values)
+
+            if filters.state:
+                param_count += 1
+                conditions.append(f"state = ${param_count}")
+                params.append(filters.state.value)
+
+            if filters.min_score is not None:
+                param_count += 1
+                conditions.append(f"score >= ${param_count}")
+                params.append(filters.min_score)
+
+            if filters.max_score is not None:
+                param_count += 1
+                conditions.append(f"score <= ${param_count}")
+                params.append(filters.max_score)
+
+            if filters.language:
+                param_count += 1
+                conditions.append(f"language = ${param_count}")
+                params.append(filters.language)
+
+            if filters.date_from:
+                param_count += 1
+                conditions.append(f"first_seen >= ${param_count}")
+                params.append(filters.date_from)
+
+            if filters.date_to:
+                param_count += 1
+                conditions.append(f"first_seen <= ${param_count}")
+                params.append(filters.date_to)
+
+            where_clause = " AND ".join(conditions) if conditions else "TRUE"
+            query = f"SELECT COUNT(*) FROM trends WHERE {where_clause}"
+
+            return await self.pool.fetchval(query, *params)
+
+        except Exception as e:
+            logger.error(f"Failed to count trends: {e}")
+            raise StorageError(f"Failed to count trends: {e}")
+
 
 class PostgreSQLTopicRepository:
     """PostgreSQL implementation of TopicRepository."""
@@ -768,6 +840,54 @@ class PostgreSQLTopicRepository:
             logger.error(f"Failed to search topics by keyword '{keyword}': {e}")
             raise StorageError(f"Failed to search topics by keyword: {e}")
 
+    async def count(self) -> int:
+        """
+        Count total topics.
+
+        Returns:
+            Total number of topics
+        """
+        try:
+            query = "SELECT COUNT(*) FROM topics"
+            return await self.pool.fetchval(query)
+
+        except Exception as e:
+            logger.error(f"Failed to count topics: {e}")
+            raise StorageError(f"Failed to count topics: {e}")
+
+    async def get_items_by_topic(
+        self,
+        topic_id: UUID,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[ProcessedItem]:
+        """
+        Get all items belonging to a topic.
+
+        Args:
+            topic_id: UUID of the topic
+            limit: Maximum number of items to return
+            offset: Number of items to skip
+
+        Returns:
+            List of ProcessedItem objects ordered by added_at DESC
+        """
+        try:
+            query = """
+                SELECT pi.*
+                FROM processed_items pi
+                INNER JOIN topic_items ti ON ti.item_id = pi.id
+                WHERE ti.topic_id = $1
+                ORDER BY ti.added_at DESC
+                LIMIT $2 OFFSET $3
+            """
+            rows = await self.pool.fetch(query, topic_id, limit, offset)
+            return [_row_to_processed_item(row) for row in rows]
+
+        except Exception as e:
+            logger.error(f"Failed to get items for topic {topic_id}: {e}")
+            raise StorageError(f"Failed to get items for topic: {e}")
+
 
 class PostgreSQLItemRepository:
     """PostgreSQL implementation of ItemRepository."""
@@ -1001,3 +1121,195 @@ class PostgreSQLItemRepository:
         except Exception as e:
             logger.error(f"Failed to get pending items: {e}")
             raise StorageError(f"Failed to get pending items: {e}")
+
+    async def count(self) -> int:
+        """
+        Count total items.
+
+        Returns:
+            Total number of processed items
+        """
+        try:
+            query = "SELECT COUNT(*) FROM processed_items"
+            return await self.pool.fetchval(query)
+
+        except Exception as e:
+            logger.error(f"Failed to count items: {e}")
+            raise StorageError(f"Failed to count items: {e}")
+
+    async def get_items_without_embeddings(self, limit: int = 100) -> List[ProcessedItem]:
+        """
+        Get items that don't have embeddings yet.
+
+        Args:
+            limit: Maximum number of items to return
+
+        Returns:
+            List of ProcessedItem objects without embeddings
+        """
+        try:
+            query = """
+                SELECT *
+                FROM processed_items
+                WHERE
+                    embedding IS NULL
+                    OR ARRAY_LENGTH(embedding, 1) IS NULL
+                ORDER BY collected_at DESC
+                LIMIT $1
+            """
+            rows = await self.pool.fetch(query, limit)
+            return [_row_to_processed_item(row) for row in rows]
+
+        except Exception as e:
+            logger.error(f"Failed to get items without embeddings: {e}")
+            raise StorageError(f"Failed to get items without embeddings: {e}")
+
+
+# ============================================================================
+# Plugin Health Repository
+# ============================================================================
+
+
+class PostgreSQLPluginHealthRepository:
+    """PostgreSQL implementation of Plugin Health Repository."""
+
+    def __init__(self, pool: Pool):
+        """
+        Initialize repository with a connection pool.
+
+        Args:
+            pool: asyncpg connection pool
+        """
+        self.pool = pool
+
+    async def get(self, plugin_name: str) -> Optional[PluginHealth]:
+        """
+        Get plugin health status by name.
+
+        Args:
+            plugin_name: Name of the plugin
+
+        Returns:
+            PluginHealth object if found, None otherwise
+        """
+        try:
+            query = "SELECT * FROM plugin_health WHERE name = $1"
+            row = await self.pool.fetchrow(query, plugin_name)
+
+            if row is None:
+                return None
+
+            return PluginHealth(
+                name=row["name"],
+                is_healthy=row["is_healthy"],
+                last_run_at=row["last_run_at"],
+                last_success_at=row["last_success_at"],
+                last_error=row["last_error"],
+                consecutive_failures=row["consecutive_failures"],
+                total_runs=row["total_runs"],
+                success_rate=row["success_rate"],
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to get plugin health for '{plugin_name}': {e}")
+            raise StorageError(f"Failed to get plugin health: {e}")
+
+    async def get_all(self) -> List[PluginHealth]:
+        """
+        Get all plugin health statuses.
+
+        Returns:
+            List of all PluginHealth objects
+        """
+        try:
+            query = "SELECT * FROM plugin_health ORDER BY name"
+            rows = await self.pool.fetch(query)
+
+            return [
+                PluginHealth(
+                    name=row["name"],
+                    is_healthy=row["is_healthy"],
+                    last_run_at=row["last_run_at"],
+                    last_success_at=row["last_success_at"],
+                    last_error=row["last_error"],
+                    consecutive_failures=row["consecutive_failures"],
+                    total_runs=row["total_runs"],
+                    success_rate=row["success_rate"],
+                )
+                for row in rows
+            ]
+
+        except Exception as e:
+            logger.error(f"Failed to get all plugin health: {e}")
+            raise StorageError(f"Failed to get all plugin health: {e}")
+
+    async def update(self, health: PluginHealth) -> None:
+        """
+        Update or insert plugin health status.
+
+        Args:
+            health: PluginHealth object with updated data
+        """
+        try:
+            query = """
+                INSERT INTO plugin_health (
+                    name, is_healthy, last_run_at, last_success_at, last_error,
+                    consecutive_failures, total_runs, success_rate, updated_at
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, NOW()
+                )
+                ON CONFLICT (name) DO UPDATE SET
+                    is_healthy = EXCLUDED.is_healthy,
+                    last_run_at = EXCLUDED.last_run_at,
+                    last_success_at = EXCLUDED.last_success_at,
+                    last_error = EXCLUDED.last_error,
+                    consecutive_failures = EXCLUDED.consecutive_failures,
+                    total_runs = EXCLUDED.total_runs,
+                    success_rate = EXCLUDED.success_rate,
+                    updated_at = NOW()
+            """
+
+            await self.pool.execute(
+                query,
+                health.name,
+                health.is_healthy,
+                health.last_run_at,
+                health.last_success_at,
+                health.last_error,
+                health.consecutive_failures,
+                health.total_runs,
+                health.success_rate,
+            )
+
+            logger.debug(f"Updated plugin health for '{health.name}'")
+
+        except Exception as e:
+            logger.error(f"Failed to update plugin health for '{health.name}': {e}")
+            raise StorageError(f"Failed to update plugin health: {e}")
+
+    async def delete(self, plugin_name: str) -> bool:
+        """
+        Delete plugin health status.
+
+        Args:
+            plugin_name: Name of the plugin
+
+        Returns:
+            True if deleted, False if not found
+        """
+        try:
+            query = "DELETE FROM plugin_health WHERE name = $1"
+            result = await self.pool.execute(query, plugin_name)
+
+            # asyncpg returns "DELETE N" where N is number of rows deleted
+            deleted = int(result.split()[-1]) > 0
+            if deleted:
+                logger.debug(f"Deleted plugin health for '{plugin_name}'")
+
+            return deleted
+
+        except Exception as e:
+            logger.error(f"Failed to delete plugin health for '{plugin_name}': {e}")
+            raise StorageError(f"Failed to delete plugin health: {e}")
+
+

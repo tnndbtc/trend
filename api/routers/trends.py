@@ -5,11 +5,14 @@ Provides REST API endpoints for accessing trend data including
 list, detail, search, and statistics operations.
 """
 
+import logging
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+logger = logging.getLogger(__name__)
 
 from api.schemas.trends import (
     TrendResponse,
@@ -26,6 +29,7 @@ from api.dependencies import (
     get_trend_repository,
     get_vector_repository,
     get_cache_repository,
+    get_semantic_search_service,
     pagination_params,
 )
 from trend_agent.storage.interfaces import (
@@ -33,7 +37,15 @@ from trend_agent.storage.interfaces import (
     VectorRepository,
     CacheRepository,
 )
-from trend_agent.types import Category, TrendState, SourceType, TrendFilter
+from trend_agent.types import (
+    Category,
+    TrendState,
+    SourceType,
+    TrendFilter,
+    SemanticSearchRequest as ServiceSearchRequest,
+    SemanticSearchFilter,
+)
+from trend_agent.services.search import QdrantSemanticSearchService
 
 
 router = APIRouter(prefix="/trends", tags=["Trends"])
@@ -303,20 +315,86 @@ async def search_trends(
     if vector_repo is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Semantic search is currently unavailable",
+            detail="Semantic search is currently unavailable. Vector database not connected.",
         )
 
-    # TODO: Implement semantic search
-    # This would require:
-    # 1. Generate embedding for search query using embedding service
-    # 2. Use vector_repo.search() to find similar trend embeddings
-    # 3. Fetch full trend data for matching IDs
-    # 4. Apply additional filters from search_request
+    try:
+        # Get semantic search service
+        from api.dependencies import get_semantic_search_service as get_search_svc
+        search_service = await get_search_svc(trend_repo, vector_repo)
 
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Semantic search implementation coming soon",
-    )
+        # Build filters from request
+        filters = SemanticSearchFilter()
+
+        if search_request.category:
+            try:
+                filters.category = Category(search_request.category)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid category: {search_request.category}"
+                )
+
+        if search_request.sources:
+            try:
+                filters.sources = [SourceType(s) for s in search_request.sources]
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid source: {str(e)}"
+                )
+
+        if search_request.state:
+            try:
+                filters.state = TrendState(search_request.state)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid state: {search_request.state}"
+                )
+
+        if search_request.language:
+            filters.language = search_request.language
+
+        if search_request.min_score:
+            filters.min_score = search_request.min_score
+
+        if search_request.date_from:
+            filters.date_from = search_request.date_from
+
+        if search_request.date_to:
+            filters.date_to = search_request.date_to
+
+        # Create service search request
+        service_request = ServiceSearchRequest(
+            query=search_request.query,
+            limit=search_request.limit,
+            min_similarity=search_request.min_similarity,
+            filters=filters,
+        )
+
+        # Perform semantic search
+        trends = await search_service.search(service_request)
+
+        # Convert to response models
+        trend_responses = [trend_to_response(t) for t in trends]
+
+        return TrendListResponse(
+            trends=trend_responses,
+            total=len(trend_responses),
+            limit=search_request.limit,
+            offset=0,
+            has_more=False,  # Semantic search doesn't use offset pagination
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Trend semantic search failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Trend semantic search failed: {str(e)}"
+        )
 
 
 @router.get(
@@ -333,6 +411,7 @@ async def get_similar_trends(
     api_key: str = Depends(optional_api_key),
     trend_repo: TrendRepository = Depends(get_trend_repository),
     vector_repo: Optional[VectorRepository] = Depends(get_vector_repository),
+    cache: Optional[CacheRepository] = Depends(get_cache_repository),
 ) -> TrendListResponse:
     """
     Find similar trends to a given trend.
@@ -346,6 +425,7 @@ async def get_similar_trends(
         api_key: Optional API key
         trend_repo: Trend repository
         vector_repo: Vector repository
+        cache: Cache repository
 
     Returns:
         TrendListResponse with similar trends
@@ -354,7 +434,7 @@ async def get_similar_trends(
         HTTPException: 404 if trend not found, 503 if vector search unavailable
     """
     # Get the source trend
-    trend = await trend_repo.get_by_id(trend_id)
+    trend = await trend_repo.get(trend_id)
     if trend is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -364,18 +444,81 @@ async def get_similar_trends(
     if vector_repo is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Similarity search is currently unavailable",
+            detail="Similarity search is currently unavailable. Vector database not connected.",
         )
 
-    # TODO: Implement similarity search
-    # Use trend.embedding or fetch from vector_repo
-    # Find similar vectors
-    # Return matching trends
+    try:
+        # Check cache first
+        cache_key = f"trends:similar:{trend_id}:{limit}:{min_similarity}"
+        if cache:
+            try:
+                cached = await cache.get(cache_key)
+                if cached:
+                    return TrendListResponse(**cached)
+            except Exception:
+                pass
 
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Similarity search implementation coming soon",
-    )
+        # Get the trend's vector from vector repository
+        vector_id = f"trend:{trend_id}"
+        vector_data = await vector_repo.get(vector_id)
+
+        if vector_data is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Vector embedding not found for trend {trend_id}. The trend may not have been indexed yet.",
+            )
+
+        trend_vector, _ = vector_data
+
+        # Search for similar vectors
+        matches = await vector_repo.search(
+            vector=trend_vector,
+            limit=limit + 1,  # +1 to account for the source trend itself
+            min_score=min_similarity,
+        )
+
+        # Filter out the source trend and extract trend IDs
+        similar_trend_ids = [
+            UUID(match.id.replace("trend:", ""))
+            for match in matches
+            if match.id != vector_id
+        ][:limit]
+
+        # Fetch full trend data
+        similar_trends = []
+        for tid in similar_trend_ids:
+            t = await trend_repo.get(tid)
+            if t:
+                similar_trends.append(t)
+
+        # Convert to response models
+        trend_responses = [trend_to_response(t) for t in similar_trends]
+
+        response = TrendListResponse(
+            trends=trend_responses,
+            total=len(trend_responses),
+            limit=limit,
+            offset=0,
+            has_more=False,
+        )
+
+        # Cache the response
+        if cache:
+            try:
+                await cache.set(cache_key, response.dict(), ttl_seconds=600)  # 10 min
+            except Exception:
+                pass
+
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Similar trends search failed for {trend_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to find similar trends: {str(e)}"
+        )
 
 
 @router.get(

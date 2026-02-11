@@ -16,9 +16,19 @@ from api.dependencies import (
     verify_admin_api_key,
     get_plugin_manager,
     get_cache_repository,
+    get_trend_repository,
+    get_topic_repository,
+    get_item_repository,
+    get_plugin_health_repository,
 )
 from trend_agent.ingestion.manager import PluginManager
-from trend_agent.storage.interfaces import CacheRepository
+from trend_agent.storage.interfaces import (
+    CacheRepository,
+    TrendRepository,
+    TopicRepository,
+    ItemRepository,
+)
+from trend_agent.storage.postgres import PostgreSQLPluginHealthRepository
 
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -76,6 +86,7 @@ class SystemMetrics(BaseModel):
 async def list_plugins(
     admin_key: str = Depends(verify_admin_api_key),
     plugin_manager: Optional[PluginManager] = Depends(get_plugin_manager),
+    health_repo: PostgreSQLPluginHealthRepository = Depends(get_plugin_health_repository),
 ) -> List[PluginInfo]:
     """
     List all collector plugins with their status.
@@ -89,6 +100,7 @@ async def list_plugins(
     Args:
         admin_key: Admin API key
         plugin_manager: Plugin manager instance
+        health_repo: Plugin health repository
 
     Returns:
         List of PluginInfo objects
@@ -106,10 +118,13 @@ async def list_plugins(
     plugin_infos = []
 
     for plugin in plugins:
-        # Get plugin status
+        # Get plugin status from manager
         status_data = await plugin_manager.get_plugin_status(plugin.metadata.name)
 
-        # TODO: Integrate with health checker to get real metrics
+        # Get health data from database
+        health = await health_repo.get(plugin.metadata.name)
+
+        # Merge data with health metrics taking precedence
         plugin_info = PluginInfo(
             name=plugin.metadata.name,
             enabled=status_data.get("enabled", True),
@@ -117,10 +132,10 @@ async def list_plugins(
             schedule=plugin.metadata.schedule,
             rate_limit=plugin.metadata.rate_limit,
             timeout=plugin.metadata.timeout,
-            last_run=status_data.get("last_run"),
-            last_error=status_data.get("last_error"),
-            total_runs=status_data.get("total_runs", 0),
-            success_rate=status_data.get("success_rate", 0.0),
+            last_run=health.last_run_at if health else status_data.get("last_run"),
+            last_error=health.last_error if health else status_data.get("last_error"),
+            total_runs=health.total_runs if health else status_data.get("total_runs", 0),
+            success_rate=health.success_rate if health else status_data.get("success_rate", 0.0),
         )
         plugin_infos.append(plugin_info)
 
@@ -138,6 +153,7 @@ async def get_plugin(
     plugin_name: str,
     admin_key: str = Depends(verify_admin_api_key),
     plugin_manager: Optional[PluginManager] = Depends(get_plugin_manager),
+    health_repo: PostgreSQLPluginHealthRepository = Depends(get_plugin_health_repository),
 ) -> PluginInfo:
     """
     Get details for a specific plugin.
@@ -146,6 +162,7 @@ async def get_plugin(
         plugin_name: Name of the plugin
         admin_key: Admin API key
         plugin_manager: Plugin manager instance
+        health_repo: Plugin health repository
 
     Returns:
         PluginInfo object
@@ -168,6 +185,9 @@ async def get_plugin(
 
     status_data = await plugin_manager.get_plugin_status(plugin_name)
 
+    # Get health data from database
+    health = await health_repo.get(plugin_name)
+
     return PluginInfo(
         name=plugin.metadata.name,
         enabled=status_data.get("enabled", True),
@@ -175,10 +195,10 @@ async def get_plugin(
         schedule=plugin.metadata.schedule,
         rate_limit=plugin.metadata.rate_limit,
         timeout=plugin.metadata.timeout,
-        last_run=status_data.get("last_run"),
-        last_error=status_data.get("last_error"),
-        total_runs=status_data.get("total_runs", 0),
-        success_rate=status_data.get("success_rate", 0.0),
+        last_run=health.last_run_at if health else status_data.get("last_run"),
+        last_error=health.last_error if health else status_data.get("last_error"),
+        total_runs=health.total_runs if health else status_data.get("total_runs", 0),
+        success_rate=health.success_rate if health else status_data.get("success_rate", 0.0),
     )
 
 
@@ -349,6 +369,10 @@ async def trigger_collection(
 async def get_system_metrics(
     admin_key: str = Depends(verify_admin_api_key),
     plugin_manager: Optional[PluginManager] = Depends(get_plugin_manager),
+    trend_repo: TrendRepository = Depends(get_trend_repository),
+    topic_repo: TopicRepository = Depends(get_topic_repository),
+    item_repo: ItemRepository = Depends(get_item_repository),
+    cache: Optional[CacheRepository] = Depends(get_cache_repository),
 ) -> SystemMetrics:
     """
     Get system-wide metrics.
@@ -363,6 +387,10 @@ async def get_system_metrics(
     Args:
         admin_key: Admin API key
         plugin_manager: Plugin manager instance
+        trend_repo: Trend repository
+        topic_repo: Topic repository
+        item_repo: Item repository
+        cache: Cache repository
 
     Returns:
         SystemMetrics object
@@ -381,16 +409,32 @@ async def get_system_metrics(
         all_plugins = plugin_manager.get_all_plugins()
         active_plugins = len(all_plugins)
 
-    # TODO: Get real counts from database
-    # For now, return placeholder values
+    # Get real counts from database
+    total_trends = await trend_repo.count()
+    total_topics = await topic_repo.count()
+    total_items = await item_repo.count()
+
+    # Calculate cache hit rate if available
+    cache_hit_rate = None
+    if cache:
+        try:
+            # Try to get cache statistics
+            # This is a simplified version - in production you'd track hits/misses
+            cache_hit_rate = 0.0  # Placeholder for now
+        except Exception:
+            pass
+
+    # Memory usage - could be enhanced with psutil if needed
+    memory_usage_mb = None
+
     return SystemMetrics(
         uptime_seconds=uptime,
-        total_trends=0,
-        total_topics=0,
-        total_items=0,
+        total_trends=total_trends,
+        total_topics=total_topics,
+        total_items=total_items,
         active_plugins=active_plugins,
-        cache_hit_rate=None,
-        memory_usage_mb=None,
+        cache_hit_rate=cache_hit_rate,
+        memory_usage_mb=memory_usage_mb,
     )
 
 
