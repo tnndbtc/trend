@@ -72,12 +72,45 @@
         .badge-success { background: #28a745; color: white; }
         .badge-warning { background: #ffc107; color: #333; }
         .badge-danger { background: #dc3545; color: white; }
+        .language-selector {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .lang-btn {
+            padding: 0.5rem 1rem;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 4px;
+            color: white;
+            text-decoration: none;
+            font-size: 0.875rem;
+            transition: all 0.3s;
+        }
+        .lang-btn:hover {
+            background: rgba(255,255,255,0.2);
+            opacity: 1;
+        }
+        .lang-btn.active {
+            background: #3498db;
+            border-color: #3498db;
+        }
+        .translation-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            background: #3498db;
+            color: white;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-left: 0.5rem;
+        }
     </style>
 </head>
 <body>
     <nav>
         <div class="container">
-            <h1>AI Trend Intelligence</h1>
+            <div>
+                <h1>AI Trend Intelligence</h1>
+            </div>
             <ul>
                 <li><a href="{% url 'trends_viewer:dashboard' %}">Dashboard</a></li>
                 <li><a href="{% url 'trends_viewer:trend_list' %}">Trends</a></li>
@@ -85,6 +118,14 @@
                 <li><a href="{% url 'trends_viewer:run_list' %}">History</a></li>
                 <li><a href="/admin/">Admin</a></li>
             </ul>
+            <div class="language-selector">
+                <a href="?lang=en" class="lang-btn {% if current_lang == 'en' or not current_lang %}active{% endif %}">
+                    English
+                </a>
+                <a href="?lang=zh" class="lang-btn {% if current_lang == 'zh' %}active{% endif %}">
+                    中文
+                </a>
+            </div>
         </div>
     </nav>
 
