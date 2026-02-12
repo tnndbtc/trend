@@ -704,6 +704,54 @@ MIT License - See LICENSE file for details
 
 ---
 
+## 📋 Developer Guidelines
+
+### Maintaining Folder Structure Documentation
+
+**⚠️ IMPORTANT**: When you add, remove, or rename folders in this repository, you MUST update the folder structure guide.
+
+#### Required Steps
+
+1. **Update setup.sh**: Edit the `show_folder_structure()` function (around line 69)
+2. **Test it**: Run `./setup.sh folders` to verify your changes
+3. **Follow the format**:
+   ```bash
+   echo -e "${COLOR_SUCCESS}📁 path/to/folder/${COLOR_RESET}"
+   echo "   Purpose: Brief description"
+   echo "   Port: XXXX (if service)"
+   echo "   Features: Key features"
+   echo "   Quick Start: ./setup.sh command"
+   echo "   Documentation: path/to/README.md"
+   echo ""
+   ```
+
+#### When to Update
+
+✅ **Update Required**:
+- Adding new service to `services/`
+- Adding new package to `packages/`
+- Renaming any folder
+- Changing folder purpose
+
+❌ **Update Not Required**:
+- Editing files within existing folders
+- Bug fixes that don't affect structure
+
+#### Quick Test
+
+```bash
+# View the folder structure guide
+./setup.sh folders
+
+# Or via menu
+./setup.sh
+# → Select option 12
+```
+
+**📖 See [.claude/instructions.md](.claude/instructions.md) for detailed instructions**
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please:

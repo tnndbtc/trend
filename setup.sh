@@ -36,6 +36,35 @@ fi
 
 #=============================================================================
 # FOLDER STRUCTURE GUIDE - Shows what each folder does
+#
+# ⚠️  CRITICAL: KEEP THIS UP TO DATE!
+#
+# When you add, remove, or rename folders in this repository:
+#
+# 1. ✅ ADD/UPDATE folder description in the appropriate section below
+# 2. ✅ Include: Purpose, Port (if service), Features, Quick Start, Documentation
+# 3. ✅ TEST with: ./setup.sh folders
+# 4. ✅ If adding service: Update command-line mode section (lines ~200-285)
+# 5. ✅ If adding service: Update Makefile with new target
+#
+# Sections in this function:
+#   - MICROSERVICES: services/* folders (independently deployable)
+#   - SHARED LIBRARIES: packages/* folders (shared code)
+#   - INFRASTRUCTURE: infrastructure/*, observability/
+#   - CONFIGURATION & DATA: config/, data/
+#   - DEVELOPMENT TOOLS: scripts/, docs/, tests/
+#   - KEY FILES: Makefile, docker-compose.yml, setup.sh
+#
+# Format to follow:
+#   echo -e "${COLOR_SUCCESS}📁 path/to/folder/${COLOR_RESET}"
+#   echo "   Purpose: What this folder does"
+#   echo "   Port: XXXX (if applicable)"
+#   echo "   Features: Key features list"
+#   echo "   Quick Start: ./setup.sh command"
+#   echo "   Documentation: path/to/README.md"
+#   echo ""
+#
+# See .claude/instructions.md for detailed instructions
 #=============================================================================
 show_folder_structure() {
     clear
