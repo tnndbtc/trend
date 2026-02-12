@@ -83,7 +83,7 @@ full_platform_setup() {
     echo ""
     echo -e "${CYAN}This will start all services:${NC}"
     echo "  • Django Web Interface (port 11800)"
-    echo "  • FastAPI REST API (port 8000)"
+    echo "  • FastAPI REST API (port 8080)"
     echo "  • PostgreSQL Database (port 5433)"
     echo "  • Qdrant Vector DB (ports 6333, 6334)"
     echo "  • Redis Cache (port 6380)"
@@ -227,39 +227,49 @@ build_and_start() {
 check_environment() {
     # Check if .env.docker exists and create it if missing
     if [ ! -f .env.docker ]; then
-        echo -e "${YELLOW}⚠️  .env.docker not found. Creating from template...${NC}"
-
         if [ -f .env.docker.example ]; then
+            echo -e "${BLUE}📝 Creating .env.docker from template...${NC}"
             cp .env.docker.example .env.docker
-            echo -e "${GREEN}✅ Created .env.docker from example${NC}"
-            echo -e "${YELLOW}⚠️  IMPORTANT: Edit .env.docker and add your OPENAI_API_KEY${NC}"
+            echo -e "${GREEN}✅ Created .env.docker (with placeholders)${NC}"
             echo ""
-            read -p "Press Enter to continue after you've added your API key, or Ctrl+C to exit..."
         else
-            echo -e "${RED}❌ .env.docker.example not found${NC}"
+            echo -e "${RED}❌ Template file .env.docker.example not found${NC}"
+            echo "Please ensure .env.docker.example exists in the current directory"
             return 1
         fi
     fi
 
-    # Check if OPENAI_API_KEY is set in environment or .env.docker
-    if [ -n "$OPENAI_API_KEY" ]; then
-        echo -e "${GREEN}✅ Using OPENAI_API_KEY from environment variable${NC}"
-    else
-        # Validate OPENAI_API_KEY is set in .env.docker
-        if grep -q "your_api_key_here" .env.docker; then
-            echo -e "${RED}❌ OPENAI_API_KEY not set in .env.docker${NC}"
-            echo "Please edit .env.docker and add your OpenAI API key"
-            return 1
-        fi
-
-        echo -e "${GREEN}✅ Environment configuration found in .env.docker${NC}"
+    # Check if OPENAI_API_KEY is set in environment variable
+    if [ -z "$OPENAI_API_KEY" ]; then
+        echo -e "${RED}❌ OPENAI_API_KEY environment variable not set${NC}"
+        echo ""
+        echo -e "${YELLOW}🔐 Security Best Practice: Set API keys as environment variables${NC}"
+        echo ""
+        echo "Please set your OpenAI API key as an environment variable:"
+        echo ""
+        echo -e "${CYAN}# Temporary (current session):${NC}"
+        echo "  export OPENAI_API_KEY='sk-proj-xxxxxxxxxxxxx'"
+        echo "  ./setup.sh"
+        echo ""
+        echo -e "${CYAN}# Permanent (add to ~/.bashrc or ~/.zshrc):${NC}"
+        echo "  echo \"export OPENAI_API_KEY='sk-proj-xxxxxxxxxxxxx'\" >> ~/.bashrc"
+        echo "  source ~/.bashrc"
+        echo "  ./setup.sh"
+        echo ""
+        echo -e "${BLUE}Get your API key from:${NC} https://platform.openai.com/api-keys"
+        echo ""
+        echo -e "${YELLOW}💡 For testing without API costs:${NC}"
+        echo "  export MOCK_API=1"
+        echo "  export OPENAI_API_KEY='mock-key-for-testing'"
+        echo ""
+        return 1
     fi
 
-    # Check if ALLOWED_HOSTS is set in environment
-    if [ -n "$ALLOWED_HOSTS" ]; then
-        echo -e "${GREEN}✅ Using ALLOWED_HOSTS from environment variable: $ALLOWED_HOSTS${NC}"
-    else
-        echo -e "${BLUE}ℹ️  Using ALLOWED_HOSTS from .env.docker${NC}"
+    echo -e "${GREEN}✅ Using OPENAI_API_KEY from environment variable${NC}"
+
+    # Optionally check for other important environment variables
+    if [ -n "$MOCK_API" ] && [ "$MOCK_API" = "1" ]; then
+        echo -e "${YELLOW}⚠️  Running in MOCK mode (no real API calls)${NC}"
     fi
 
     return 0
@@ -379,10 +389,10 @@ show_service_status() {
     fi
 
     # Check API
-    if curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
-        echo -e "${GREEN}✅ FastAPI REST API${NC} - http://localhost:8000"
+    if curl -sf http://localhost:8080 > /dev/null 2>&1; then
+        echo -e "${GREEN}✅ FastAPI REST API${NC} - http://localhost:8080"
     else
-        echo -e "${YELLOW}⚠️  FastAPI REST API${NC} - http://localhost:8000 (not started or not responding)"
+        echo -e "${YELLOW}⚠️  FastAPI REST API${NC} - http://localhost:8080 (not started or not responding)"
     fi
 
     # Check Grafana

@@ -11,7 +11,7 @@ from pydantic import HttpUrl
 
 # Import pipeline components
 from trend_agent.processing import create_standard_pipeline
-from trend_agent.types import Metrics, RawItem, SourceType
+from trend_agent.schemas import Metrics, RawItem, SourceType
 from tests.mocks.intelligence import MockEmbeddingService, MockLLMService
 
 

@@ -14,7 +14,7 @@ from trend_agent.processing.interfaces import (
     BaseNormalizer,
     BaseRanker,
 )
-from trend_agent.types import (
+from trend_agent.schemas import (
     Category,
     Metrics,
     ProcessedItem,

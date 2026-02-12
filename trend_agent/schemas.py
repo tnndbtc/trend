@@ -44,6 +44,7 @@ class SourceType(str, Enum):
     GUARDIAN = "guardian"
     RSS = "rss"
     CUSTOM = "custom"
+    DEMO = "demo"
 
 
 class Category(str, Enum):
@@ -105,6 +106,11 @@ class RawItem(BaseModel):
     collected_at: datetime = Field(default_factory=datetime.utcnow)
     metrics: Metrics = Field(default_factory=Metrics)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    # Additional fields for processing pipeline
+    language: str = "en"
+    title_summary: Optional[str] = None
+    full_summary: Optional[str] = None
 
     class Config:
         frozen = False

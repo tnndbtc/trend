@@ -7,7 +7,7 @@ This module provides fixtures for creating test data across all layers.
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from trend_agent.types import (
+from trend_agent.schemas import (
     Category,
     Metrics,
     ProcessedItem,

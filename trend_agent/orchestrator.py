@@ -24,7 +24,7 @@ from trend_agent.storage.redis import RedisCacheRepository
 from trend_agent.ingestion.manager import DefaultPluginManager
 from trend_agent.ingestion.converters import batch_raw_to_processed
 from trend_agent.processing import create_standard_pipeline
-from trend_agent.types import ProcessedItem, Trend, Topic
+from trend_agent.schemas import ProcessedItem, Trend, Topic
 
 logger = logging.getLogger(__name__)
 
@@ -299,7 +299,7 @@ class TrendIntelligenceOrchestrator:
         pipeline = create_standard_pipeline(embedding_service, llm_service)
 
         # Convert to RawItems for pipeline
-        from trend_agent.types import RawItem
+        from trend_agent.schemas import RawItem
         raw_items = [
             RawItem(
                 source=item.source,

@@ -8,7 +8,7 @@ embeddings, LLM, semantic search, trend detection, and translation.
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Protocol, Tuple
 
-from trend_agent.types import (
+from trend_agent.schemas import (
     ProcessedItem,
     SemanticSearchRequest,
     Topic,

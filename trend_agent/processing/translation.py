@@ -9,7 +9,7 @@ import logging
 from typing import List, Optional
 
 from trend_agent.processing.interfaces import BaseProcessingStage
-from trend_agent.types import ProcessedItem, PipelineResult
+from trend_agent.schemas import ProcessedItem, PipelineResult
 
 logger = logging.getLogger(__name__)
 

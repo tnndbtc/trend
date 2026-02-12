@@ -9,7 +9,7 @@ from typing import List, Optional
 from datetime import datetime
 from uuid import UUID
 
-from trend_agent.types import TrendState, Category, SourceType
+from trend_agent.schemas import TrendState, Category, SourceType
 
 
 # ============================================================================
@@ -128,7 +128,7 @@ class Query:
             List of trends
         """
         from api.dependencies import get_trend_repository
-        from trend_agent.types import TrendFilter
+        from trend_agent.schemas import TrendFilter
 
         # Get repository
         trend_repo = get_trend_repository()
@@ -223,7 +223,7 @@ class Query:
             get_vector_repository,
             get_semantic_search_service,
         )
-        from trend_agent.types import SemanticSearchRequest
+        from trend_agent.schemas import SemanticSearchRequest
 
         trend_repo = get_trend_repository()
         vector_repo = get_vector_repository()

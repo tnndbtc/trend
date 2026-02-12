@@ -8,7 +8,7 @@ including normalization, deduplication, clustering, and ranking stages.
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Protocol
 
-from trend_agent.types import (
+from trend_agent.schemas import (
     PipelineConfig,
     PipelineResult,
     ProcessedItem,

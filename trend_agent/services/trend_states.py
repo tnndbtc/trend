@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Tuple
 from uuid import UUID
 
-from trend_agent.types import Trend, TrendState, Metrics
+from trend_agent.schemas import Trend, TrendState, Metrics
 from trend_agent.storage.interfaces import TrendRepository
 
 logger = logging.getLogger(__name__)

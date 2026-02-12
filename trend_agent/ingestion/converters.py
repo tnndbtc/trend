@@ -8,7 +8,7 @@ allowing collected data to be persisted before full processing.
 import re
 from uuid import uuid4
 
-from trend_agent.types import ProcessedItem, RawItem
+from trend_agent.schemas import ProcessedItem, RawItem
 
 
 def raw_to_processed(raw_item: RawItem) -> ProcessedItem:

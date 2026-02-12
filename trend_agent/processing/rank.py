@@ -11,10 +11,10 @@ from typing import List, Optional
 from uuid import uuid4
 
 from trend_agent.processing.interfaces import BaseRanker, BaseProcessingStage
-from trend_agent.types import ProcessedItem, Topic, Trend, TrendState
+from trend_agent.schemas import ProcessedItem, Topic, Trend, TrendState
 from trend_agent.services.trend_states import TrendStateService
 from trend_agent.services.key_points import KeyPointExtractor
-from trend_agent.services.interfaces import LLMService
+from trend_agent.intelligence.interfaces import BaseLLMService
 
 logger = logging.getLogger(__name__)
 
@@ -652,11 +652,21 @@ def score_topic(topic):
     Returns:
         Engagement score
     """
-    return (
-        topic.metrics.get("upvotes", 0)
-        + topic.metrics.get("comments", 0)
-        + topic.metrics.get("score", 0)
-    )
+    # Handle both Pydantic models and dict-like access
+    if hasattr(topic.metrics, 'upvotes'):
+        # Pydantic Metrics model
+        return (
+            (topic.metrics.upvotes or 0)
+            + (topic.metrics.comments or 0)
+            + (topic.metrics.score or 0)
+        )
+    else:
+        # Dict-like access
+        return (
+            topic.metrics.get("upvotes", 0)
+            + topic.metrics.get("comments", 0)
+            + topic.metrics.get("score", 0)
+        )
 
 
 def rank_topics(topics):
@@ -688,9 +698,17 @@ def score_cluster(cluster):
     """
     score = 0
     for t in cluster:
-        score += t.metrics.get("upvotes", 0)
-        score += t.metrics.get("comments", 0)
-        score += t.metrics.get("score", 0)
+        # Handle both Pydantic models and dict-like access
+        if hasattr(t.metrics, 'upvotes'):
+            # Pydantic Metrics model
+            score += (t.metrics.upvotes or 0)
+            score += (t.metrics.comments or 0)
+            score += (t.metrics.score or 0)
+        else:
+            # Dict-like access
+            score += t.metrics.get("upvotes", 0)
+            score += t.metrics.get("comments", 0)
+            score += t.metrics.get("score", 0)
     return score
 
 

@@ -21,7 +21,7 @@ from trend_agent.storage.postgres import (
 )
 from trend_agent.storage.qdrant import QdrantVectorRepository
 from trend_agent.storage.redis import RedisCacheRepository
-from trend_agent.types import RawItem, ProcessedItem, Topic, Trend
+from trend_agent.schemas import RawItem, ProcessedItem, Topic, Trend
 from datetime import datetime, timezone
 import uuid
 

@@ -180,7 +180,7 @@ async def _cleanup_old_data_async(days: int) -> Dict[str, Any]:
         PostgreSQLTrendRepository,
         PostgreSQLTopicRepository,
     )
-    from trend_agent.types import TrendState
+    from trend_agent.schemas import TrendState
     import os
 
     db_pool = PostgreSQLConnectionPool(
@@ -339,7 +339,7 @@ async def _update_plugin_health_async() -> Dict[str, Any]:
         PostgreSQLConnectionPool,
         PostgreSQLPluginHealthRepository,
     )
-    from trend_agent.types import PluginHealth
+    from trend_agent.schemas import PluginHealth
     import os
 
     # Initialize database connection
@@ -431,7 +431,7 @@ async def _generate_analytics_async() -> Dict[str, Any]:
         PostgreSQLItemRepository,
     )
     from trend_agent.storage.redis import RedisCacheRepository
-    from trend_agent.types import TrendFilter
+    from trend_agent.schemas import TrendFilter
     import os
     import json
 
@@ -743,7 +743,7 @@ async def _update_trend_states_async() -> Dict[str, Any]:
         state_service = TrendStateService(trend_repo=trend_repo)
 
         # Get all active trends (not DEAD)
-        from trend_agent.types import TrendFilter, TrendState
+        from trend_agent.schemas import TrendFilter, TrendState
 
         # Get trends from last 7 days (active window)
         cutoff = datetime.utcnow() - timedelta(days=7)

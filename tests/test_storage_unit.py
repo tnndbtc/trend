@@ -19,7 +19,7 @@ from tests.mocks.storage import (
     MockTrendRepository,
     MockVectorRepository,
 )
-from trend_agent.types import Category, TrendFilter, TrendState, VectorMatch
+from trend_agent.schemas import Category, TrendFilter, TrendState, VectorMatch
 
 
 # ============================================================================

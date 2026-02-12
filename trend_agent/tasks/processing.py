@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from celery import Task
 
 from trend_agent.tasks import app
-from trend_agent.types import ProcessedItem, Trend, Topic
+from trend_agent.schemas import ProcessedItem, Trend, Topic
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ async def _process_pending_items_async(limit: int) -> Dict[str, Any]:
         start_time = datetime.utcnow()
 
         # Convert ProcessedItems to RawItems for pipeline
-        from trend_agent.types import RawItem, SourceType
+        from trend_agent.schemas import RawItem, SourceType
 
         raw_items = [
             RawItem(
@@ -276,7 +276,7 @@ async def _reprocess_trends_async(hours: int) -> Dict[str, Any]:
         PostgreSQLConnectionPool,
         PostgreSQLTrendRepository,
     )
-    from trend_agent.types import TrendFilter
+    from trend_agent.schemas import TrendFilter
     import os
 
     db_pool = PostgreSQLConnectionPool(
@@ -478,7 +478,7 @@ async def _test_pipeline_async(sample_size: int) -> Dict[str, Any]:
         Dictionary with results
     """
     from trend_agent.processing import create_standard_pipeline
-    from trend_agent.types import RawItem, SourceType, Metrics
+    from trend_agent.schemas import RawItem, SourceType, Metrics
     from pydantic import HttpUrl
     import os
 

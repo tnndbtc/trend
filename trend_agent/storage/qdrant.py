@@ -26,7 +26,7 @@ from trend_agent.storage.interfaces import (
     ConnectionError,
     StorageError,
 )
-from trend_agent.types import VectorMatch
+from trend_agent.schemas import VectorMatch
 
 logger = logging.getLogger(__name__)
 

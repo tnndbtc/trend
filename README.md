@@ -7,11 +7,11 @@ A production-ready, multi-service AI platform for collecting, analyzing, and sur
 ## ⚡ Quick Start
 
 ```bash
-# 1. Setup environment
-cp .env.docker.example .env.docker
-nano .env.docker  # Add your OPENAI_API_KEY
+# 1. Set API key (environment variable - security best practice!)
+export OPENAI_API_KEY='sk-proj-xxxxxxxxxxxxx'
+# Get key from: https://platform.openai.com/api-keys
 
-# 2. Start platform
+# 2. Run setup
 ./setup.sh
 # Select: 1) Full Platform Setup (All Services)
 
@@ -24,6 +24,8 @@ nano .env.docker  # Add your OPENAI_API_KEY
 ./setup.sh
 # Select: 4) Collect Trends
 ```
+
+**🔐 Security**: API keys are set via environment variables, never committed to files.
 
 **📖 See [QUICKSTART.md](QUICKSTART.md) for detailed getting started guide**
 
@@ -192,6 +194,7 @@ trend/
 | **[QUICKSTART.md](QUICKSTART.md)** | Get up and running in 5 minutes |
 | **[SERVICES.md](SERVICES.md)** | Detailed service documentation |
 | **[API_GUIDE.md](API_GUIDE.md)** | Complete API reference and examples |
+| **[docs/SECURITY.md](docs/SECURITY.md)** | Security best practices and API key management |
 | **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** | Common issues and solutions |
 | **[ARCHITECTURE_GAP_ANALYSIS.md](ARCHITECTURE_GAP_ANALYSIS.md)** | Architecture compliance (95% complete) |
 | **[trend_agent/agents/QUICKSTART.md](trend_agent/agents/QUICKSTART.md)** | Agent Control Plane guide |
@@ -214,11 +217,15 @@ trend/
 git clone <repository-url>
 cd trend
 
-# 2. Configure environment
-cp .env.docker.example .env.docker
-nano .env.docker  # Add your OPENAI_API_KEY
+# 2. Set API key as environment variable (security best practice!)
+export OPENAI_API_KEY='sk-proj-xxxxxxxxxxxxx'
+# Get from: https://platform.openai.com/api-keys
 
-# 3. Start platform
+# Make it permanent (optional):
+echo "export OPENAI_API_KEY='sk-proj-xxxxxxxxxxxxx'" >> ~/.bashrc
+source ~/.bashrc
+
+# 3. Run setup
 ./setup.sh
 # Select: 1) Full Platform Setup (All Services)
 
@@ -231,6 +238,11 @@ nano .env.docker  # Add your OPENAI_API_KEY
 ./setup.sh
 # Select: 4) Collect Trends
 ```
+
+**🔐 Security Note**:
+- API keys are **never stored in files** - they come from environment variables
+- `.env.docker` contains only placeholders and is safe to commit to git
+- This follows the [12-factor app](https://12factor.net/config) security pattern
 
 **🎉 That's it!** See [QUICKSTART.md](QUICKSTART.md) for more details.
 
@@ -317,6 +329,83 @@ Access Grafana dashboards at http://localhost:3000
 - Real-time metrics, logs, and traces
 
 **📖 See [SERVICES.md](SERVICES.md) for monitoring details**
+
+---
+
+## ☸️ Kubernetes Deployment
+
+The platform includes production-ready Kubernetes configurations with secure secret management.
+
+### Quick Deploy
+
+```bash
+# 1. Set environment variables (security best practice!)
+export OPENAI_API_KEY='sk-proj-xxxxx'
+export POSTGRES_PASSWORD='secure-password'
+
+# 2. Use interactive deployment script
+cd k8s
+./deploy.sh
+```
+
+### Three Secret Management Options
+
+#### 1. Script from Environment Variables (Development)
+
+```bash
+# Quick start for dev/test
+cd k8s/secrets
+./create-from-env.sh
+kubectl apply -k k8s/base
+```
+
+#### 2. Sealed Secrets (GitOps)
+
+```bash
+# For ArgoCD/Flux workflows
+cd k8s/secrets/sealed-secrets
+./create-sealed-secrets.sh
+git add *-sealed.yaml  # Safe to commit (encrypted)
+git commit && git push
+```
+
+#### 3. External Secrets Operator (Production)
+
+```bash
+# For AWS/GCP/Azure secret managers
+aws secretsmanager create-secret \
+  --name prod/trend-platform/openai-api-key \
+  --secret-string "$OPENAI_API_KEY"
+
+kubectl apply -f k8s/secrets/external-secrets/aws-secrets-manager.yaml
+```
+
+### Features
+
+- ✅ **Secure secrets management** - 3 production-ready approaches
+- ✅ **Interactive deployment** - Menu-driven deployment script
+- ✅ **Horizontal scaling** - HPA for API and Celery workers
+- ✅ **StatefulSets** - For PostgreSQL and Qdrant
+- ✅ **Ingress** - NGINX ingress with TLS support
+- ✅ **ConfigMaps** - Environment-specific configuration
+- ✅ **Health checks** - Liveness and readiness probes
+- ✅ **Resource limits** - CPU and memory limits per pod
+- ✅ **Multi-cloud** - AWS (EKS), GCP (GKE), Azure (AKS)
+
+### Supported Secret Managers
+
+- AWS Secrets Manager
+- Google Secret Manager
+- Azure Key Vault
+- HashiCorp Vault
+
+### Resources
+
+- **[k8s/README.md](k8s/README.md)** - Complete Kubernetes deployment guide
+- **[k8s/secrets/README.md](k8s/secrets/README.md)** - Secret management comparison
+- **[docs/SECURITY.md](docs/SECURITY.md#kubernetes-deployment-security)** - K8s security best practices
+
+**🔐 Security**: All approaches follow 12-factor app pattern - secrets come from environment variables, never hardcoded in files!
 
 ---
 
@@ -599,13 +688,13 @@ CELERY_WORKER_CONCURRENCY=2
 - [x] Background task processing
 - [x] Full observability stack
 - [x] Agent Control Plane (Session 11)
+- [x] **Kubernetes deployment with secure secret management** (Session 12)
 - [ ] Multi-language translation (in progress)
 - [ ] Viral prediction engine
 - [ ] Early trend detection
 - [ ] Content strategy recommendations
 - [ ] Mobile app
 - [ ] GraphQL API
-- [ ] Kubernetes deployment
 
 ---
 

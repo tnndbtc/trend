@@ -14,7 +14,7 @@ from trend_agent.services.trend_states import (
     StateTransition,
     VelocityAnalysis,
 )
-from trend_agent.types import Trend, TrendState, Metrics, Category, SourceType
+from trend_agent.schemas import Trend, TrendState, Metrics, Category, SourceType
 
 
 # ============================================================================

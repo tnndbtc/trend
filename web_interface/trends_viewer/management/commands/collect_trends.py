@@ -6,15 +6,15 @@ from asgiref.sync import sync_to_async
 from trends_viewer.models import CollectionRun, CollectedTopic, TrendCluster
 
 # Import trend_agent modules
-from collectors import get_all_collectors
-from processing.normalize import normalize
-from processing.deduplicate import deduplicate
-from processing.cluster import cluster as cluster_topics
-from processing.rank import rank_topics, rank_clusters
-from processing.content_fetcher import fetch_content_for_topic
-from llm.summarizer import summarize_single_topic, summarize_topics_batch
-from categories import load_categories
-from config import is_source_diversity_enabled, get_max_percentage_per_source
+from trend_agent.collectors import get_all_collectors
+from trend_agent.processing.normalize import normalize
+from trend_agent.processing.deduplicate import deduplicate
+from trend_agent.processing.cluster import cluster as cluster_topics
+from trend_agent.processing.rank import rank_topics, rank_clusters
+from trend_agent.processing.content_fetcher import fetch_content_for_topic
+from trend_agent.llm.summarizer import summarize_single_topic, summarize_topics_batch
+from trend_agent.categories import load_categories
+from trend_agent.config import is_source_diversity_enabled, get_max_percentage_per_source
 
 
 def apply_source_diversity_limit(ranked_topics, max_total, max_percentage_per_source=0.20):
@@ -294,20 +294,33 @@ class Command(BaseCommand):
         self.stdout.write('💾 Saving topics to database...')
         saved_topics = []
         for topic in selected_topics:
+            # Handle both Pydantic models and dict-like access for metrics
+            if hasattr(topic.metrics, 'upvotes'):
+                upvotes = topic.metrics.upvotes or 0
+                comments = topic.metrics.comments or 0
+                score = topic.metrics.score or 0
+            else:
+                upvotes = topic.metrics.get('upvotes', 0)
+                comments = topic.metrics.get('comments', 0)
+                score = topic.metrics.get('score', 0)
+
+            # RawItem has published_at, not timestamp
+            timestamp = getattr(topic, 'published_at', None) or getattr(topic, 'timestamp', None)
+
             db_topic = await sync_to_async(CollectedTopic.objects.create)(
                 collection_run=collection_run,
                 title=topic.title,
-                description=topic.description,
-                source=topic.source,
-                url=topic.url,
-                timestamp=topic.timestamp,
-                upvotes=topic.metrics.get('upvotes', 0),
-                comments=topic.metrics.get('comments', 0),
-                score=topic.metrics.get('score', 0),
+                description=topic.description or "",
+                source=str(topic.source) if hasattr(topic.source, 'value') else topic.source,
+                url=str(topic.url),
+                timestamp=timestamp,
+                upvotes=upvotes,
+                comments=comments,
+                score=score,
                 language=topic.language,
-                content=topic.content,
-                title_summary=topic.title_summary,
-                full_summary=topic.full_summary,
+                content=topic.content or "",
+                title_summary=topic.title_summary or topic.title,
+                full_summary=topic.full_summary or "",
             )
             saved_topics.append((db_topic, topic))
 
@@ -326,13 +339,13 @@ class Command(BaseCommand):
             # No category summary - leave empty
             summary = ""
 
-            # Calculate cluster score
-            score = sum([
-                t.metrics.get('upvotes', 0) +
-                t.metrics.get('comments', 0) +
-                t.metrics.get('score', 0)
-                for t in topic_cluster
-            ])
+            # Calculate cluster score - handle Pydantic models
+            score = 0
+            for t in topic_cluster:
+                if hasattr(t.metrics, 'upvotes'):
+                    score += (t.metrics.upvotes or 0) + (t.metrics.comments or 0) + (t.metrics.score or 0)
+                else:
+                    score += t.metrics.get('upvotes', 0) + t.metrics.get('comments', 0) + t.metrics.get('score', 0)
 
             # Determine cluster language (most common language in cluster)
             from collections import Counter

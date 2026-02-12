@@ -14,7 +14,7 @@ from trend_agent.services.key_points import (
     KeyPointExtractor,
     TopicKeyPointExtractor,
 )
-from trend_agent.types import (
+from trend_agent.schemas import (
     Trend,
     Topic,
     ProcessedItem,

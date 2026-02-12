@@ -15,7 +15,7 @@ from trend_agent.storage.interfaces import (
     CacheRepository,
     TopicRepository,
 )
-from trend_agent.types import (
+from trend_agent.schemas import (
     ProcessedItem,
     Topic,
     Trend,

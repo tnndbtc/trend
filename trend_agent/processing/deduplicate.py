@@ -13,7 +13,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from trend_agent.intelligence.interfaces import BaseEmbeddingService
 from trend_agent.processing.interfaces import BaseDeduplicator, BaseProcessingStage
-from trend_agent.types import ProcessedItem, Topic, Trend, Metrics, SourceType
+from trend_agent.schemas import ProcessedItem, Topic, Trend, Metrics, SourceType
 
 logger = logging.getLogger(__name__)
 
@@ -313,8 +313,72 @@ class DeduplicatorStage(BaseProcessingStage):
 
 
 # ============================================================================
-# Legacy Function (for backward compatibility)
+# Legacy Functions (for backward compatibility)
 # ============================================================================
+
+
+def deduplicate(topics: List, threshold: float = 0.92, debug: bool = False) -> List:
+    """
+    Simple synchronous deduplication function for Django management commands.
+
+    Uses URL-based exact matching for deduplication. This is a simple, fast
+    approach that doesn't require embeddings or async operations.
+
+    Args:
+        topics: List of Topic-like objects with 'url' and 'title' attributes
+        threshold: Similarity threshold (not used in this simple version)
+        debug: Print debug information (default False)
+
+    Returns:
+        List of unique topics
+
+    Note:
+        This is a simplified deduplication for backward compatibility.
+        For more sophisticated embedding-based deduplication, use
+        EmbeddingDeduplicator with async/await.
+    """
+    if not topics:
+        return []
+
+    # Track seen URLs and titles
+    seen_urls = set()
+    seen_titles = set()
+    unique_topics = []
+
+    for topic in topics:
+        # Get URL and title (handle both object attributes and dict-like access)
+        if hasattr(topic, 'url'):
+            # Pydantic model or object with attributes
+            url = str(topic.url) if topic.url else None
+            title = str(topic.title) if topic.title else None
+        elif hasattr(topic, 'get'):
+            # Dict-like access
+            url = topic.get('url', '')
+            title = topic.get('title', '')
+        else:
+            # Fallback
+            url = None
+            title = None
+
+        # Create a unique key for this topic
+        # Prefer URL-based deduplication (more reliable)
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            unique_topics.append(topic)
+        elif not url and title and title not in seen_titles:
+            # Fallback to title-based deduplication if no URL
+            seen_titles.add(title)
+            unique_topics.append(topic)
+
+    duplicates_removed = len(topics) - len(unique_topics)
+
+    if debug:
+        logger.info(
+            f"Simple deduplication: removed {duplicates_removed} duplicates "
+            f"({len(unique_topics)}/{len(topics)} unique topics)"
+        )
+
+    return unique_topics
 
 
 async def deduplicate_legacy(

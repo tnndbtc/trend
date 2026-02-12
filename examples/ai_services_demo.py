@@ -25,7 +25,7 @@ sys.path.insert(0, str(project_root))
 
 from trend_agent.services import get_service_factory
 from trend_agent.services.search import SemanticSearchRequest, SemanticSearchFilter
-from trend_agent.types import Category
+from trend_agent.schemas import Category
 
 
 async def demo_embeddings():

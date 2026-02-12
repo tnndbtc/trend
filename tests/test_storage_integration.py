@@ -27,7 +27,7 @@ from trend_agent.storage.postgres import (
 )
 from trend_agent.storage.qdrant import QdrantVectorRepository
 from trend_agent.storage.redis import RedisCacheRepository
-from trend_agent.types import (
+from trend_agent.schemas import (
     Category,
     Metrics,
     ProcessedItem,

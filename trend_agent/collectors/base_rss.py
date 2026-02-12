@@ -13,7 +13,7 @@ import feedparser
 from bs4 import BeautifulSoup
 
 from trend_agent.ingestion.base import CollectorPlugin
-from trend_agent.types import Metrics, RawItem, SourceType
+from trend_agent.schemas import Metrics, RawItem, SourceType
 
 logger = logging.getLogger(__name__)
 

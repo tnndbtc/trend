@@ -1,7 +1,10 @@
-# Environment files with secrets
+# Environment files with secrets (but NOT .env.docker.example which is the template)
 .env
 .env.docker
 *.env.local
+
+# Explicitly include the template (should be committed)
+!.env.docker.example
 
 # Data directory (databases and cache)
 data/

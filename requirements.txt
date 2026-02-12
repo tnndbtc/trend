@@ -5,6 +5,12 @@ slowapi>=0.1.9  # Rate limiting for FastAPI
 celery>=5.3.0
 redis>=5.0.0
 
+# Django web framework (for web interface)
+django>=4.2.0
+django-redis>=5.4.0  # Redis cache backend for Django
+psycopg2-binary>=2.9.9  # PostgreSQL adapter for Django
+gunicorn>=21.2.0  # WSGI HTTP server for Django
+
 # Database drivers
 asyncpg>=0.29.0  # PostgreSQL async driver
 qdrant-client>=1.7.0  # Vector database client
@@ -17,6 +23,7 @@ hdbscan>=0.8.33
 # NLP and text processing
 langdetect>=1.0.9
 beautifulsoup4>=4.12.0
+trafilatura>=1.6.0  # Web content extraction
 spacy>=3.7.0  # Optional for entity extraction
 
 # Task scheduling
@@ -24,6 +31,9 @@ apscheduler>=3.10.4
 
 # HTTP client
 aiohttp>=3.9.0
+
+# AI/LLM APIs
+openai>=1.12.0
 
 # Monitoring and observability
 prometheus-client>=0.19.0

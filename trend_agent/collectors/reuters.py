@@ -6,7 +6,7 @@ Fetches latest news from Reuters RSS feed.
 
 from trend_agent.collectors.base_rss import BaseRSSCollector
 from trend_agent.ingestion.base import register_collector
-from trend_agent.types import PluginMetadata, SourceType
+from trend_agent.schemas import PluginMetadata, SourceType
 
 
 @register_collector

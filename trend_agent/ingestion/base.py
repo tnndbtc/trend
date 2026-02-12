@@ -8,7 +8,7 @@ enabling a plugin-based architecture for data ingestion.
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Type
 
-from trend_agent.types import PluginMetadata, RawItem
+from trend_agent.schemas import PluginMetadata, RawItem
 
 
 class CollectorPlugin(ABC):

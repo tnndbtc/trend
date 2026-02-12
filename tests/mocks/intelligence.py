@@ -14,7 +14,7 @@ from trend_agent.intelligence.interfaces import (
     BaseLLMService,
     BaseSemanticSearchService,
 )
-from trend_agent.types import (
+from trend_agent.schemas import (
     SemanticSearchRequest,
     Topic,
     Trend,

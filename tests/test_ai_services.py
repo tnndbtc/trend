@@ -19,7 +19,7 @@ from trend_agent.services.search import (
     SemanticSearchRequest,
     SemanticSearchFilter,
 )
-from trend_agent.types import Trend, TrendState, Category, SourceType, Metrics
+from trend_agent.schemas import Trend, TrendState, Category, SourceType, Metrics
 from datetime import datetime, timedelta
 
 

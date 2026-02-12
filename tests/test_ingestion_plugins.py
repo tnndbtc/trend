@@ -24,7 +24,7 @@ from trend_agent.ingestion.manager import DefaultPluginManager
 from trend_agent.ingestion.health import DefaultHealthChecker
 from trend_agent.ingestion.rate_limiter import InMemoryRateLimiter
 from trend_agent.ingestion.scheduler import DefaultScheduler
-from trend_agent.types import Metrics, PluginMetadata, RawItem, SourceType
+from trend_agent.schemas import Metrics, PluginMetadata, RawItem, SourceType
 
 
 # ============================================================================

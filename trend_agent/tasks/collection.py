@@ -12,7 +12,7 @@ from datetime import datetime
 from celery import Task, group, chain
 
 from trend_agent.tasks import app
-from trend_agent.types import RawItem, SourceType
+from trend_agent.schemas import RawItem, SourceType
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class CollectionTask(Task):
                 PostgreSQLConnectionPool,
                 PostgreSQLPluginHealthRepository,
             )
-            from trend_agent.types import PluginHealth
+            from trend_agent.schemas import PluginHealth
 
             # Extract plugin name from args
             plugin_name = args[0] if args else "unknown"

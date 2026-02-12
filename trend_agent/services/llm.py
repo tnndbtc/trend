@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from trend_agent.intelligence.interfaces import BaseLLMService, LLMError
-from trend_agent.types import Topic, Trend
+from trend_agent.schemas import Topic, Trend
 from trend_agent.observability.metrics import (
     api_request_counter,
     api_request_duration,

@@ -24,7 +24,7 @@ from trend_agent.storage.interfaces import (
     TopicRepository,
     CacheRepository,
 )
-from trend_agent.types import Category, SourceType
+from trend_agent.schemas import Category, SourceType
 
 
 router = APIRouter(prefix="/topics", tags=["Topics"])

@@ -28,7 +28,7 @@ from trend_agent.storage.interfaces import (
     VectorRepository,
     CacheRepository,
 )
-from trend_agent.types import (
+from trend_agent.schemas import (
     Category,
     SourceType,
     SemanticSearchRequest as ServiceSearchRequest,
@@ -242,7 +242,7 @@ async def keyword_search(
 
     # Search trends if requested
     if search_request.search_type in ["trends", "all"]:
-        from trend_agent.types import TrendFilter
+        from trend_agent.schemas import TrendFilter
 
         trend_filter = TrendFilter(
             category=Category(search_request.category) if search_request.category else None,
@@ -364,7 +364,7 @@ async def get_search_suggestions(
     query_lower = query.lower()
 
     # Get recent trends
-    from trend_agent.types import TrendFilter
+    from trend_agent.schemas import TrendFilter
 
     trends = await trend_repo.get_top_trends(limit=50)
 

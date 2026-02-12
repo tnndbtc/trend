@@ -23,7 +23,7 @@ from trend_agent.storage.interfaces import (
     StorageError,
     TopicRepository,
 )
-from trend_agent.types import (
+from trend_agent.schemas import (
     Category,
     Metrics,
     PluginHealth,

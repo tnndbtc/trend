@@ -11,7 +11,7 @@ from typing import List, Optional
 from langdetect import DetectorFactory, LangDetectException, detect, detect_langs
 
 from trend_agent.processing.interfaces import BaseProcessingStage
-from trend_agent.types import ProcessedItem
+from trend_agent.schemas import ProcessedItem
 
 # Set seed for reproducible results
 DetectorFactory.seed = 0

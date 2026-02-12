@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Protocol
 
 from trend_agent.ingestion.base import CollectorPlugin
-from trend_agent.types import PluginHealth, RawItem
+from trend_agent.schemas import PluginHealth, RawItem
 
 
 class PluginManager(Protocol):

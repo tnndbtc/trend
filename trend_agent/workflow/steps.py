@@ -19,7 +19,7 @@ from trend_agent.workflow.interface import (
     StepResult,
     StepStatus,
 )
-from trend_agent.types import RawItem, Topic, Trend
+from trend_agent.schemas import RawItem, Topic, Trend
 
 logger = logging.getLogger(__name__)
 

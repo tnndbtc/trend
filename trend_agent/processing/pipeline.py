@@ -12,7 +12,7 @@ from typing import List, Optional
 from uuid import uuid4
 
 from trend_agent.processing.interfaces import BasePipeline, ProcessingStage
-from trend_agent.types import (
+from trend_agent.schemas import (
     PipelineConfig,
     PipelineResult,
     ProcessedItem,

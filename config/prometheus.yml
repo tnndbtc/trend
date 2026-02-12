@@ -15,9 +15,10 @@ alerting:
         - targets:
             - 'alertmanager:9093'
 
-# Load alert rules from files
+# Load alert rules and recording rules from files
 rule_files:
   - 'alerts/*.yml'
+  - 'rules/*.yml'
 
 # Scrape configurations
 scrape_configs:
@@ -78,59 +79,3 @@ scrape_configs:
       - source_labels: [__name__]
         target_label: application
         replacement: 'system'
-
-# Recording rules for precomputed aggregations
-# These speed up dashboard queries
-recording_rules:
-  - name: api_performance
-    interval: 1m
-    rules:
-      # Request rate (requests per second)
-      - record: api:requests_per_second
-        expr: rate(api_requests_total[1m])
-
-      # Error rate (percentage)
-      - record: api:error_rate
-        expr: |
-          sum(rate(api_requests_total{status_code=~"5.."}[1m])) /
-          sum(rate(api_requests_total[1m]))
-
-      # Average request duration
-      - record: api:request_duration_average
-        expr: |
-          rate(api_request_duration_seconds_sum[1m]) /
-          rate(api_request_duration_seconds_count[1m])
-
-      # 95th percentile request duration
-      - record: api:request_duration_p95
-        expr: histogram_quantile(0.95, rate(api_request_duration_seconds_bucket[1m]))
-
-  - name: celery_performance
-    interval: 1m
-    rules:
-      # Task completion rate
-      - record: celery:tasks_per_second
-        expr: rate(celery_tasks_total{status="success"}[1m])
-
-      # Task failure rate
-      - record: celery:failure_rate
-        expr: |
-          sum(rate(celery_tasks_total{status="failure"}[1m])) /
-          sum(rate(celery_tasks_total[1m]))
-
-      # Average task duration
-      - record: celery:task_duration_average
-        expr: |
-          rate(celery_task_duration_seconds_sum[1m]) /
-          rate(celery_task_duration_seconds_count[1m])
-
-  - name: business_metrics
-    interval: 1m
-    rules:
-      # Items collected per second
-      - record: business:items_collected_per_second
-        expr: rate(items_collected_total[1m])
-
-      # Trends created per minute
-      - record: business:trends_created_per_minute
-        expr: rate(trends_created_total[1m]) * 60

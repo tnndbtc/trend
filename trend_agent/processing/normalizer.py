@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 from bs4 import BeautifulSoup
 
 from trend_agent.processing.interfaces import BaseNormalizer, BaseProcessingStage
-from trend_agent.types import ProcessedItem
+from trend_agent.schemas import ProcessedItem
 
 logger = logging.getLogger(__name__)
 

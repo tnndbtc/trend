@@ -15,16 +15,54 @@ Get the Trend Intelligence Platform running in 5 minutes!
 
 ## 1. Initial Setup
 
-```bash
-# Copy environment file
-cp .env.docker.example .env.docker
+### Set API Key (Environment Variable)
 
-# Edit and add your OpenAI API key
-nano .env.docker
-# Change: OPENAI_API_KEY=your_api_key_here
+**🔐 Security Best Practice**: Never commit API keys to files. Use environment variables!
+
+```bash
+# Get your API key from: https://platform.openai.com/api-keys
+
+# Temporary (current session):
+export OPENAI_API_KEY='sk-proj-xxxxxxxxxxxxx'
+
+# Permanent (recommended - add to ~/.bashrc or ~/.zshrc):
+echo "export OPENAI_API_KEY='sk-proj-xxxxxxxxxxxxx'" >> ~/.bashrc
+source ~/.bashrc
+
+# Verify it's set:
+echo $OPENAI_API_KEY
 ```
 
-**💡 Tip**: If testing, set `MOCK_API=1` to avoid consuming API credits.
+**💡 For testing without API costs**:
+```bash
+export MOCK_API=1
+export OPENAI_API_KEY='mock-key-for-testing'
+```
+
+**Note**: The `.env.docker` file contains only placeholders and is safe to commit. Real secrets come from environment variables.
+
+---
+
+## Why Environment Variables?
+
+**🔐 Security Best Practice**: This platform follows the [12-factor app](https://12factor.net/config) methodology:
+
+✅ **DO**: Store secrets in environment variables
+- Not committed to version control
+- Different per environment (dev/staging/prod)
+- Easy to rotate without code changes
+
+❌ **DON'T**: Store secrets in files
+- Risk of accidental commits to git
+- Hard to manage across environments
+- Requires code changes to rotate
+
+**What's in `.env.docker`?**
+- Only placeholder values and non-sensitive configuration
+- Safe to commit to version control
+- Template for required environment variables
+
+**📖 See [docs/SECURITY.md](docs/SECURITY.md) for complete security documentation**
 
 ---
 

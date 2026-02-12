@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Protocol
 from uuid import UUID
 
-from trend_agent.types import (
+from trend_agent.schemas import (
     ProcessedItem,
     Topic,
     Trend,

@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 
 from trend_agent.ingestion.base import CollectorPlugin, PluginRegistry
 from trend_agent.ingestion.interfaces import BaseHealthChecker
-from trend_agent.types import PluginHealth
+from trend_agent.schemas import PluginHealth
 
 logger = logging.getLogger(__name__)
 

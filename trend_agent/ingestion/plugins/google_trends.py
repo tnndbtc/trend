@@ -13,7 +13,7 @@ from typing import List, Optional
 from pydantic import HttpUrl
 
 from trend_agent.ingestion.base import CollectorPlugin
-from trend_agent.types import PluginMetadata, RawItem, SourceType, Metrics
+from trend_agent.schemas import PluginMetadata, RawItem, SourceType, Metrics
 
 logger = logging.getLogger(__name__)
 

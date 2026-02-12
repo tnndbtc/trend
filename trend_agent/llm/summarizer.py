@@ -18,7 +18,7 @@ async def summarize_topics_batch(topics):
         content = t.content if t.content else t.description if t.description else ""
         topics_data.append({
             "title": t.title,
-            "url": t.url,
+            "url": str(t.url),  # Convert HttpUrl to string for JSON serialization
             "content": content,
             "language": t.language
         })
@@ -71,12 +71,12 @@ Important:
             return result
         else:
             # Fallback: return empty summaries
-            return [{"title_summary": t.title, "full_summary": f"[{t.url}] {t.title}"} for t in topics]
+            return [{"title_summary": t.title, "full_summary": f"[{str(t.url)}] {t.title}"} for t in topics]
 
     except Exception as e:
         print(f"Batch summarization error: {e}")
         # Fallback: return basic summaries
-        return [{"title_summary": t.title, "full_summary": f"[{t.url}] {t.title}"} for t in topics]
+        return [{"title_summary": t.title, "full_summary": f"[{str(t.url)}] {t.title}"} for t in topics]
 
 
 async def summarize_single_topic(topic):

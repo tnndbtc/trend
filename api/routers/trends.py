@@ -37,7 +37,7 @@ from trend_agent.storage.interfaces import (
     VectorRepository,
     CacheRepository,
 )
-from trend_agent.types import (
+from trend_agent.schemas import (
     Category,
     TrendState,
     SourceType,

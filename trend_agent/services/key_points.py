@@ -10,8 +10,8 @@ import logging
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 
-from trend_agent.types import Trend, Topic, ProcessedItem
-from trend_agent.services.interfaces import LLMService
+from trend_agent.schemas import Trend, Topic, ProcessedItem
+from trend_agent.intelligence.interfaces import BaseLLMService
 from trend_agent.storage.interfaces import ItemRepository
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ Output format: Return ONLY a JSON array of strings, e.g.:
 
     def __init__(
         self,
-        llm_service: LLMService,
+        llm_service: BaseLLMService,
         item_repo: Optional[ItemRepository] = None,
         max_items_per_trend: int = 20,
         min_points: int = 3,
@@ -377,7 +377,7 @@ class TopicKeyPointExtractor:
     Simpler version that doesn't require full trend analysis.
     """
 
-    def __init__(self, llm_service: LLMService, max_points: int = 3):
+    def __init__(self, llm_service: BaseLLMService, max_points: int = 3):
         """
         Initialize topic key point extractor.
 
@@ -432,7 +432,7 @@ Return as JSON array of strings."""
 
 
 def get_key_point_extractor(
-    llm_service: LLMService,
+    llm_service: BaseLLMService,
     item_repo: Optional[ItemRepository] = None,
 ) -> KeyPointExtractor:
     """

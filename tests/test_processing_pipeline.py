@@ -18,7 +18,7 @@ from trend_agent.processing.deduplicate import DeduplicatorStage, EmbeddingDedup
 from trend_agent.processing.language import LanguageDetectorStage
 from trend_agent.processing.normalizer import NormalizerStage
 from trend_agent.processing.rank import RankerStage
-from trend_agent.types import (
+from trend_agent.schemas import (
     Metrics,
     PipelineConfig,
     ProcessingStatus,
@@ -141,7 +141,7 @@ def test_minimal_pipeline_creation(embedding_service, pipeline_config):
 @pytest.mark.asyncio
 async def test_normalizer_stage():
     """Test normalizer stage independently."""
-    from trend_agent.types import ProcessedItem, Metrics
+    from trend_agent.schemas import ProcessedItem, Metrics
 
     # Create test item with HTML content
     item = ProcessedItem(
@@ -170,7 +170,7 @@ async def test_normalizer_stage():
 @pytest.mark.asyncio
 async def test_language_detector_stage():
     """Test language detector stage."""
-    from trend_agent.types import ProcessedItem, Metrics
+    from trend_agent.schemas import ProcessedItem, Metrics
 
     # Create items with different languages
     items = [
@@ -208,7 +208,7 @@ async def test_language_detector_stage():
 @pytest.mark.asyncio
 async def test_deduplicator_stage(embedding_service):
     """Test deduplicator stage."""
-    from trend_agent.types import ProcessedItem, Metrics
+    from trend_agent.schemas import ProcessedItem, Metrics
 
     # Create duplicate items
     now = datetime.utcnow()
@@ -257,7 +257,7 @@ async def test_deduplicator_stage(embedding_service):
 @pytest.mark.asyncio
 async def test_clusterer_stage(embedding_service):
     """Test clusterer stage."""
-    from trend_agent.types import ProcessedItem, Metrics
+    from trend_agent.schemas import ProcessedItem, Metrics
 
     # Create items that should cluster together
     now = datetime.utcnow()
@@ -291,7 +291,7 @@ async def test_clusterer_stage(embedding_service):
 @pytest.mark.asyncio
 async def test_ranker_stage(embedding_service):
     """Test ranker stage."""
-    from trend_agent.types import ProcessedItem, Metrics, Topic, Category
+    from trend_agent.schemas import ProcessedItem, Metrics, Topic, Category
 
     # Create mock topic
     now = datetime.utcnow()

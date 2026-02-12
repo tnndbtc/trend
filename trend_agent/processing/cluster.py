@@ -8,7 +8,7 @@ for density-based clustering with automatic cluster number detection.
 import logging
 from collections import Counter
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import uuid4
 
 import hdbscan
@@ -16,7 +16,7 @@ import numpy as np
 
 from trend_agent.intelligence.interfaces import BaseEmbeddingService, BaseLLMService
 from trend_agent.processing.interfaces import BaseClusterer, BaseProcessingStage
-from trend_agent.types import Category, Metrics, ProcessedItem, SourceType, Topic
+from trend_agent.schemas import Category, Metrics, ProcessedItem, SourceType, Topic
 
 logger = logging.getLogger(__name__)
 
@@ -706,3 +706,96 @@ class ClustererStage(BaseProcessingStage):
             Stage name
         """
         return "clusterer"
+
+
+# ============================================================================
+# Legacy Function (for backward compatibility)
+# ============================================================================
+
+
+def cluster(topics: List, categories: List[str]) -> tuple[List[List], List[str]]:
+    """
+    Simple category-based clustering for Django management commands.
+
+    Distributes topics across predefined categories using simple keyword matching.
+    This is a simplified version for backward compatibility with the old collect_trends.py.
+
+    Args:
+        topics: List of Topic-like objects with 'title' and 'description' attributes
+        categories: List of category names to cluster topics into
+
+    Returns:
+        Tuple of (clusters, cluster_category_names) where:
+        - clusters: List of lists, each containing topics for that category
+        - cluster_category_names: List of category names corresponding to each cluster
+
+    Note:
+        This is a simplified function for backward compatibility.
+        For proper clustering, use HDBSCANClusterer with async/await.
+    """
+    if not topics:
+        return [], []
+
+    if not categories:
+        # No categories provided, put all topics in one "General" cluster
+        return [topics], ["General"]
+
+    # Create empty cluster for each category
+    category_clusters = {cat: [] for cat in categories}
+
+    # Simple keyword-based assignment
+    # Try to match topics to categories based on keywords in title/description
+    category_keywords = {
+        "Technology": ["ai", "tech", "software", "app", "code", "programming", "data", "cloud", "api"],
+        "Business": ["company", "business", "startup", "funding", "market", "economy", "stock"],
+        "Science": ["research", "study", "science", "discovery", "experiment", "paper"],
+        "Politics": ["government", "politics", "election", "policy", "law", "congress"],
+        "Entertainment": ["movie", "music", "game", "entertainment", "tv", "show", "video"],
+        "Sports": ["sport", "game", "team", "player", "match", "championship"],
+        "Health": ["health", "medical", "disease", "treatment", "doctor", "hospital"],
+        "General": [],  # Catch-all
+    }
+
+    for topic in topics:
+        # Get topic text
+        title = getattr(topic, 'title', '') or ''
+        description = getattr(topic, 'description', '') or ''
+        text = f"{title} {description}".lower()
+
+        # Try to match to a category
+        matched = False
+        for category in categories:
+            if category in category_keywords:
+                keywords = category_keywords[category]
+                if any(keyword in text for keyword in keywords):
+                    category_clusters[category].append(topic)
+                    matched = True
+                    break
+
+        # If no match, assign to first category or "General" if it exists
+        if not matched:
+            if "General" in category_clusters:
+                category_clusters["General"].append(topic)
+            elif categories:
+                category_clusters[categories[0]].append(topic)
+
+    # Convert dict to lists (filter out empty clusters)
+    clusters = []
+    cluster_names = []
+
+    for category in categories:
+        if category_clusters[category]:  # Only include non-empty clusters
+            clusters.append(category_clusters[category])
+            cluster_names.append(category)
+
+    # If no topics were assigned to any category, put them all in the first category
+    if not clusters and topics:
+        clusters = [topics]
+        cluster_names = [categories[0] if categories else "General"]
+
+    logger.info(
+        f"Category clustering: {len(topics)} topics -> {len(clusters)} categories, "
+        f"distribution: {[(name, len(cluster)) for name, cluster in zip(cluster_names, clusters)]}"
+    )
+
+    return clusters, cluster_names

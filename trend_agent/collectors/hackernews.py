@@ -12,7 +12,7 @@ from typing import List
 import aiohttp
 
 from trend_agent.ingestion.base import CollectorPlugin, register_collector
-from trend_agent.types import Metrics, PluginMetadata, RawItem, SourceType
+from trend_agent.schemas import Metrics, PluginMetadata, RawItem, SourceType
 
 logger = logging.getLogger(__name__)
 

@@ -113,8 +113,9 @@ async def fetch_content_for_topic(topic) -> str:
     if topic.url:
         # Skip reddit.com, news.ycombinator.com, news.google.com, and other platform URLs
         skip_domains = ['reddit.com', 'news.ycombinator.com', 'twitter.com', 'x.com', 'news.google.com']
-        if not any(domain in topic.url for domain in skip_domains):
-            content = await fetch_url_content(topic.url)
+        url_str = str(topic.url)  # Convert HttpUrl to string
+        if not any(domain in url_str for domain in skip_domains):
+            content = await fetch_url_content(url_str)
             if content:
                 return content
 

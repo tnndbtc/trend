@@ -22,7 +22,7 @@ from trend_agent.storage.interfaces import (
     TrendRepository,
     VectorRepository,
 )
-from trend_agent.types import (
+from trend_agent.schemas import (
     SemanticSearchRequest,
     Trend,
     TrendFilter,
