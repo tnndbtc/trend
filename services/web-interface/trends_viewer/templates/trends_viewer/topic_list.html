@@ -1,0 +1,146 @@
+{% extends 'trends_viewer/base.html' %}
+{% load custom_filters %}
+{% load source_filters %}
+
+{% block title %}Topics - AI Trend Intelligence{% endblock %}
+
+{% block content %}
+<h2 style="margin-bottom: 1.5rem;">Topic Clusters</h2>
+
+{% if current_run %}
+<div class="card" style="margin-bottom: 1.5rem; background: #f8f9fa;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <strong>Collection Run:</strong> {{ current_run.timestamp|date:"Y-m-d H:i" }}
+            <span style="margin-left: 1rem; color: #666;">
+                {{ current_run.topics_count }} topics in {{ current_run.clusters_count }} clusters
+            </span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom: 1.5rem;">
+    <form method="get" style="display: flex; gap: 1rem; align-items: end;">
+        <div style="flex: 1;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #666;">Filter by Source:</label>
+            <select name="source" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                <option value="">All Sources</option>
+                {% for source in sources %}
+                <option value="{{ source }}" {% if current_source == source %}selected{% endif %}>
+                    {{ source|format_source_name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" style="padding: 0.75rem 1.5rem; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem;">
+            Apply Filter
+        </button>
+        {% if current_source %}
+        <a href="{% url 'trends_viewer:topic_list' %}" style="padding: 0.75rem 1.5rem; background: #95a5a6; color: white; text-decoration: none; border-radius: 4px;">
+            Clear Filter
+        </a>
+        {% endif %}
+    </form>
+</div>
+
+{% if clusters %}
+<div style="display: flex; flex-direction: column; gap: 2rem;">
+    {% for cluster in clusters %}
+    <div class="card" style="background: #f8f9fa; border-left: 4px solid #3498db;">
+        <!-- Cluster Header -->
+        <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 2px solid #ddd;">
+            <div style="display: flex; align-items: start; gap: 1rem; margin-bottom: 0.5rem;">
+                <span style="background: #3498db; color: white; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.875rem; font-weight: 600;">
+                    #{{ cluster.rank }}
+                </span>
+                <h3 style="margin: 0; flex: 1; font-size: 1.25rem; color: #2c3e50;">
+                    {{ cluster.title }}
+                </h3>
+            </div>
+
+            {% if cluster.summary %}
+            <p style="color: #555; font-size: 0.95rem; line-height: 1.6; margin: 0.75rem 0 0 0; font-style: italic;">
+                {{ cluster.summary|truncatewords:100 }}
+            </p>
+            {% endif %}
+
+            <div style="margin-top: 0.75rem; font-size: 0.875rem; color: #666;">
+                <span>⭐ Score: {{ cluster.score }}</span>
+                <span style="margin-left: 1.5rem;">📊 {{ cluster.topics.count }} posts</span>
+            </div>
+        </div>
+
+        <!-- Topics in this Cluster -->
+        <div style="display: flex; flex-direction: column; gap: 1rem;">
+            {% for topic in cluster.topics.all %}
+                {% if not current_source or topic.source == current_source %}
+                <div style="background: white; padding: 1rem; border-radius: 4px; border: 1px solid #e0e0e0;">
+                    <div style="display: flex; align-items: start; gap: 1rem;">
+                        <span class="badge badge-{{ topic.source }}" style="margin-top: 0.25rem;">{{ topic.source }}</span>
+                        <div style="flex: 1;">
+                            <h4 style="margin-bottom: 0.5rem; font-size: 1rem; font-weight: 500;">
+                                <a href="{{ topic.url }}" target="_blank" rel="noopener noreferrer" style="color: #2c3e50; text-decoration: none;">
+                                    {{ topic.title_summary|default:topic.title }}
+                                </a>
+                            </h4>
+
+                            {% if topic.full_summary %}
+                            <p style="color: #666; font-size: 0.875rem; margin-bottom: 0.75rem; line-height: 1.5;">
+                                {{ topic.full_summary|remove_url_prefix|truncatewords:60 }}
+                            </p>
+                            {% elif topic.description %}
+                            <p style="color: #666; font-size: 0.875rem; margin-bottom: 0.75rem; line-height: 1.5;">
+                                {{ topic.description|truncatewords:40 }}
+                            </p>
+                            {% endif %}
+
+                            <div style="display: flex; gap: 1.5rem; font-size: 0.875rem; color: #666;">
+                                <span>🕒 {{ topic.timestamp|date:"Y-m-d H:i" }}</span>
+                                {% if topic.upvotes %}
+                                <span>⬆️ {{ topic.upvotes }}</span>
+                                {% endif %}
+                                {% if topic.comments %}
+                                <span>💬 {{ topic.comments }}</span>
+                                {% endif %}
+                                {% if topic.score %}
+                                <span>⭐ {{ topic.score }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if is_paginated %}
+<div style="margin-top: 2rem; text-align: center;">
+    <div style="display: inline-flex; gap: 0.5rem;">
+        {% if page_obj.has_previous %}
+        <a href="?page=1{% if current_source %}&source={{ current_source }}{% endif %}" style="padding: 0.5rem 1rem; background: #3498db; color: white; text-decoration: none; border-radius: 4px;">First</a>
+        <a href="?page={{ page_obj.previous_page_number }}{% if current_source %}&source={{ current_source }}{% endif %}" style="padding: 0.5rem 1rem; background: #3498db; color: white; text-decoration: none; border-radius: 4px;">Previous</a>
+        {% endif %}
+
+        <span style="padding: 0.5rem 1rem; background: #ecf0f1; border-radius: 4px;">
+            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+        </span>
+
+        {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}{% if current_source %}&source={{ current_source }}{% endif %}" style="padding: 0.5rem 1rem; background: #3498db; color: white; text-decoration: none; border-radius: 4px;">Next</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}{% if current_source %}&source={{ current_source }}{% endif %}" style="padding: 0.5rem 1rem; background: #3498db; color: white; text-decoration: none; border-radius: 4px;">Last</a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="card">
+    <p style="text-align: center; color: #666; padding: 2rem;">No topic clusters found. Run the collection command to gather data.</p>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends 'trends_viewer/base.html' %}
+
+{% block title %}{{ trend.title }} - AI Trend Intelligence{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 1rem;">
+    <a href="{% url 'trends_viewer:trend_list' %}" style="color: #3498db; text-decoration: none;">&larr; Back to Trends</a>
+</div>
+
+<div class="card">
+    <div style="display: flex; align-items: start; gap: 1.5rem; margin-bottom: 1.5rem;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; min-width: 80px; height: 80px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 2rem; font-weight: bold;">
+            #{{ trend.rank }}
+        </div>
+        <div style="flex: 1;">
+            <h2 style="margin-bottom: 1rem;">{{ trend.title }}</h2>
+            <div style="display: flex; gap: 1.5rem; align-items: center; font-size: 0.875rem; color: #666; margin-bottom: 1rem;">
+                <span>📊 Score: {{ trend.score|floatformat:0 }}</span>
+                <span>📰 {{ topics.count }} topic{{ topics.count|pluralize }}</span>
+                <span>📅 {{ trend.created_at|date:"Y-m-d H:i" }}</span>
+            </div>
+            <div style="padding: 1rem; background: #f8f9fa; border-left: 4px solid #3498db; border-radius: 4px;">
+                <p style="line-height: 1.6; color: #333;">{{ trend.summary }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h3 style="margin-bottom: 1.5rem;">Related Topics ({{ topics.count }})</h3>
+
+    {% if topics %}
+    <div style="display: flex; flex-direction: column; gap: 1rem;">
+        {% for topic in topics %}
+        <div style="padding: 1rem; background: #f8f9fa; border-radius: 8px; border-left: 4px solid {% if topic.source == 'reddit' %}#ff4500{% elif topic.source == 'hackernews' %}#ff6600{% else %}#4285f4{% endif %};">
+            <div style="display: flex; align-items: start; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem;">
+                <h4 style="flex: 1; font-size: 1rem;">
+                    <a href="{{ topic.url }}" target="_blank" rel="noopener noreferrer" style="color: #2c3e50; text-decoration: none;">
+                        {{ topic.title }}
+                    </a>
+                </h4>
+                <span class="badge badge-{{ topic.source }}">{{ topic.source }}</span>
+            </div>
+
+            {% if topic.description %}
+            <p style="color: #666; font-size: 0.875rem; margin-bottom: 0.75rem; line-height: 1.5;">
+                {{ topic.description|truncatewords:50 }}
+            </p>
+            {% endif %}
+
+            <div style="display: flex; gap: 1.5rem; font-size: 0.875rem; color: #666;">
+                <span>🕒 {{ topic.timestamp|date:"Y-m-d H:i" }}</span>
+                {% if topic.upvotes %}
+                <span>⬆️ {{ topic.upvotes }} upvotes</span>
+                {% endif %}
+                {% if topic.comments %}
+                <span>💬 {{ topic.comments }} comments</span>
+                {% endif %}
+                {% if topic.score %}
+                <span>⭐ {{ topic.score }} points</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="text-align: center; color: #666; padding: 2rem;">No topics found for this trend.</p>
+    {% endif %}
+</div>
+
+{% endblock %}
