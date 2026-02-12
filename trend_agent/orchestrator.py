@@ -285,18 +285,30 @@ class TrendIntelligenceOrchestrator:
         logger.info(f"Found {len(pending_items)} pending items")
 
         # Get AI services (real or mock)
+        translation_manager = None
         if self.use_real_ai_services and self.service_factory:
             logger.info(f"Using real AI services (LLM provider: {self.llm_provider})")
             embedding_service = self.service_factory.get_embedding_service()
             llm_service = self.service_factory.get_llm_service(provider=self.llm_provider)
+
+            # Get translation manager if translation is enabled
+            try:
+                translation_manager = self.service_factory.get_translation_manager()
+                logger.info("Translation manager initialized for pipeline")
+            except Exception as e:
+                logger.warning(f"Translation manager not available: {e}")
         else:
             logger.info("Using mock AI services for testing")
             from tests.mocks.intelligence import MockEmbeddingService, MockLLMService
             embedding_service = MockEmbeddingService()
             llm_service = MockLLMService()
 
-        # Create pipeline
-        pipeline = create_standard_pipeline(embedding_service, llm_service)
+        # Create pipeline with translation support
+        pipeline = create_standard_pipeline(
+            embedding_service,
+            llm_service,
+            translation_manager=translation_manager
+        )
 
         # Convert to RawItems for pipeline
         from trend_agent.schemas import RawItem

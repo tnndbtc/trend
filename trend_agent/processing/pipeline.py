@@ -283,6 +283,8 @@ def create_standard_pipeline(
     embedding_service,
     llm_service=None,
     config: Optional[PipelineConfig] = None,
+    translation_manager=None,
+    enable_translation: bool = None,
 ) -> ProcessingPipeline:
     """
     Create a standard processing pipeline with all stages.
@@ -291,6 +293,8 @@ def create_standard_pipeline(
         embedding_service: Embedding service for deduplication and clustering
         llm_service: Optional LLM service for enhanced features
         config: Optional pipeline configuration
+        translation_manager: Optional translation manager for translation stage
+        enable_translation: Whether to enable translation (reads ENABLE_TRANSLATION env if None)
 
     Returns:
         Configured processing pipeline
@@ -301,6 +305,7 @@ def create_standard_pipeline(
         >>> pipeline = create_standard_pipeline(embedding_svc)
         >>> result = await pipeline.run(raw_items)
     """
+    import os
     from trend_agent.processing.cluster import ClustererStage, HDBSCANClusterer
     from trend_agent.processing.deduplicate import (
         DeduplicatorStage,
@@ -309,6 +314,7 @@ def create_standard_pipeline(
     from trend_agent.processing.language import LanguageDetectorStage
     from trend_agent.processing.normalizer import NormalizerStage
     from trend_agent.processing.rank import RankerStage
+    from trend_agent.processing.translation import TranslationStage
 
     pipeline = ProcessingPipeline(config=config)
 
@@ -322,6 +328,27 @@ def create_standard_pipeline(
     # Stage 2: Language Detection
     language_stage = LanguageDetectorStage()
     pipeline.add_stage(language_stage)
+
+    # Stage 2.5: Translation (optional, if enabled)
+    if enable_translation is None:
+        enable_translation = os.getenv("ENABLE_TRANSLATION", "false").lower() in ("true", "1", "yes")
+
+    if enable_translation and translation_manager:
+        # Get target languages from config or environment
+        target_langs = os.getenv("TRANSLATION_TARGET_LANGUAGES", "en,es,fr,de,zh-Hans,ja").split(",")
+        target_langs = [lang.strip() for lang in target_langs]
+
+        translation_stage = TranslationStage(
+            translation_manager=translation_manager,
+            target_languages=target_langs,
+            translate_title=True,
+            translate_description=True,
+            translate_content=False,  # Content can be large, skip by default
+        )
+        pipeline.add_stage(translation_stage)
+        logger.info(f"Translation enabled with target languages: {', '.join(target_langs)}")
+    elif enable_translation and not translation_manager:
+        logger.warning("Translation enabled but no translation_manager provided - skipping translation stage")
 
     # Stage 3: Deduplication
     deduplicator = EmbeddingDeduplicator(embedding_service)

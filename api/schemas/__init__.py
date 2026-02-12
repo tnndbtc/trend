@@ -17,15 +17,48 @@ from api.schemas.common import (
     PaginationParams,
     PaginatedResponse,
 )
+from api.schemas.source import (
+    SourceTypeEnum,
+    HealthStatusEnum,
+    CrawlerSourceCreate,
+    CrawlerSourceUpdate,
+    CrawlerSourceResponse,
+    CrawlerSourceList,
+    SourceTestRequest,
+    SourceTestResponse,
+    CollectionTriggerRequest,
+    CollectionTriggerResponse,
+    SourceValidationRequest,
+    SourceValidationResponse,
+    SourceHealthMetrics,
+    SourceFilter,
+)
 
 __all__ = [
+    # Trends
     "TrendResponse",
     "TrendListResponse",
     "TrendSearchRequest",
     "TopicResponse",
     "TopicListResponse",
+    # Common
     "ErrorResponse",
     "SuccessResponse",
     "PaginationParams",
     "PaginatedResponse",
+    # Sources
+    "SourceTypeEnum",
+    "HealthStatusEnum",
+    "CrawlerSourceCreate",
+    "CrawlerSourceUpdate",
+    "CrawlerSourceResponse",
+    "CrawlerSourceList",
+    "SourceTestRequest",
+    "SourceTestResponse",
+    "CollectionTriggerRequest",
+    "CollectionTriggerResponse",
+    "SourceValidationRequest",
+    "SourceValidationResponse",
+    "SourceHealthMetrics",
+    "SourceFilter",
 ]

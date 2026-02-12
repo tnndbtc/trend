@@ -376,7 +376,10 @@ class TranslationManager:
                     method="GET", endpoint="translation_cache", status_code=200
                 ).inc()
 
-                logger.debug(f"Using cached translation for: {text[:50]}...")
+                logger.info(
+                    f"[TRANSLATION] ⚡ CACHE HIT - No API call needed "
+                    f"(text: '{text[:50]}{'...' if len(text) > 50 else ''}', {source_language or 'auto'} -> {target_language})"
+                )
                 return cached
 
         # Determine provider order
@@ -396,8 +399,9 @@ class TranslationManager:
             provider = self.providers[provider_name]
 
             try:
-                logger.debug(
-                    f"Attempting translation with {provider_name}: {text[:50]}..."
+                logger.info(
+                    f"[TRANSLATION] Attempting with provider: {provider_name.upper()} "
+                    f"(text: '{text[:50]}{'...' if len(text) > 50 else ''}', {source_language or 'auto'} -> {target_language})"
                 )
 
                 translation = await provider.translate(
@@ -413,8 +417,8 @@ class TranslationManager:
                     await self.cache.set(text, translation, source_language, target_language)
 
                 logger.info(
-                    f"Successfully translated with {provider_name} "
-                    f"(length: {len(text)} -> {len(translation)})"
+                    f"[TRANSLATION] ✓ SUCCESS with {provider_name.upper()} "
+                    f"(length: {len(text)} chars -> {len(translation)} chars)"
                 )
 
                 return translation
@@ -502,11 +506,6 @@ class TranslationManager:
 
         # Translate uncached texts
         if texts_to_translate:
-            logger.info(
-                f"Translating {len(texts_to_translate)} texts "
-                f"({len(valid_texts) - len(texts_to_translate)} cached)"
-            )
-
             # Use primary provider for batch translation
             provider_name = (
                 preferred_provider
@@ -514,6 +513,12 @@ class TranslationManager:
                 else self.provider_priority[0]
             )
             provider = self.providers[provider_name]
+
+            logger.info(
+                f"[TRANSLATION] Batch translating {len(texts_to_translate)} texts "
+                f"with {provider_name.upper()} "
+                f"({len(valid_texts) - len(texts_to_translate)} from cache, {source_language or 'auto'} -> {target_language})"
+            )
 
             try:
                 batch_translations = await provider.translate_batch(

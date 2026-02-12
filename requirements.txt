@@ -61,6 +61,12 @@ python-dotenv>=1.0.0
 pytrends>=4.9.0  # Google Trends
 feedparser>=6.0.10  # RSS feeds
 
+# Security and encryption
+cryptography>=41.0.0  # For API key encryption
+
+# HTTP clients
+httpx>=0.24.0  # Modern async HTTP client
+
 # CJK and text processing
 jieba>=0.42.1  # Chinese segmentation
 pypinyin>=0.50.0  # Chinese romanization

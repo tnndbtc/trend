@@ -662,17 +662,49 @@ show_all_urls() {
     echo ""
     echo -e "${COLOR_HIGHLIGHT}Access URLs & Credentials${COLOR_RESET}"
     echo ""
+
+    # Detect local IP address
+    LOCAL_IP=""
+
+    # Method 1: hostname -I (works on most Linux systems)
+    if command -v hostname &> /dev/null; then
+        LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    fi
+
+    # Method 2: ip route (fallback)
+    if [ -z "$LOCAL_IP" ] && command -v ip &> /dev/null; then
+        LOCAL_IP=$(ip route get 1 2>/dev/null | awk '{print $7; exit}')
+    fi
+
+    # Method 3: ifconfig (older systems)
+    if [ -z "$LOCAL_IP" ] && command -v ifconfig &> /dev/null; then
+        LOCAL_IP=$(ifconfig 2>/dev/null | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | head -1)
+    fi
+
+    # Format IP display
+    if [ -n "$LOCAL_IP" ]; then
+        IP_DISPLAY="${COLOR_MUTED} or ${COLOR_RESET}${LOCAL_IP}"
+    else
+        IP_DISPLAY="${COLOR_MUTED} (local IP not detected)${COLOR_RESET}"
+    fi
+
     echo "Web Interfaces:"
-    echo "  Django Web:    http://localhost:11800"
-    echo "  Django Admin:  http://localhost:11800/admin"
-    echo "  FastAPI Docs:  http://localhost:8000/docs"
-    echo "  Grafana:       http://localhost:3000"
-    echo "  Prometheus:    http://localhost:9090"
+    echo -e "  Django Web:    http://localhost:11800${IP_DISPLAY}:11800"
+    echo -e "  Django Admin:  http://localhost:11800/admin${IP_DISPLAY}:11800/admin"
+    echo -e "  FastAPI Docs:  http://localhost:8000/docs${IP_DISPLAY}:8000/docs"
+    echo -e "  Grafana:       http://localhost:3000${IP_DISPLAY}:3000"
+    echo -e "  Prometheus:    http://localhost:9090${IP_DISPLAY}:9090"
     echo ""
     echo "Databases:"
-    echo "  PostgreSQL:    localhost:5433"
-    echo "  Qdrant:        localhost:6333"
-    echo "  Redis:         localhost:6380"
+    if [ -n "$LOCAL_IP" ]; then
+        echo -e "  PostgreSQL:    localhost:5433 ${COLOR_MUTED}or${COLOR_RESET} ${LOCAL_IP}:5433"
+        echo -e "  Qdrant:        localhost:6333 ${COLOR_MUTED}or${COLOR_RESET} ${LOCAL_IP}:6333"
+        echo -e "  Redis:         localhost:6380 ${COLOR_MUTED}or${COLOR_RESET} ${LOCAL_IP}:6380"
+    else
+        echo "  PostgreSQL:    localhost:5433"
+        echo "  Qdrant:        localhost:6333"
+        echo "  Redis:         localhost:6380"
+    fi
     echo ""
     echo "Default Credentials:"
     echo "  Django Admin:  admin / changeme123"
@@ -680,6 +712,10 @@ show_all_urls() {
     echo "  PostgreSQL:    trend_user / trend_password"
     echo ""
     print_warning "Change default credentials for production!"
+    if [ -n "$LOCAL_IP" ]; then
+        echo ""
+        print_info "💡 Use local IP (${LOCAL_IP}) to access from other devices on your network"
+    fi
     echo ""
     read -p "Press Enter to continue..."
 }

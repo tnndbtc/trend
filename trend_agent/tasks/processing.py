@@ -117,12 +117,20 @@ async def _process_pending_items_async(limit: int) -> Dict[str, Any]:
             }
 
         # Initialize AI services (real or mock based on configuration)
+        translation_manager = None
         if use_real_services:
             logger.info(f"Using real AI services (LLM provider: {llm_provider})")
             from trend_agent.services import ServiceFactory
             service_factory = ServiceFactory()
             embedding_service = service_factory.get_embedding_service()
             llm_service = service_factory.get_llm_service(provider=llm_provider)
+
+            # Get translation manager if translation is enabled
+            try:
+                translation_manager = service_factory.get_translation_manager()
+                logger.info("Translation manager initialized for pipeline")
+            except Exception as e:
+                logger.warning(f"Translation manager not available: {e}")
         else:
             logger.info("Using mock AI services for testing")
             from tests.mocks.intelligence import MockEmbeddingService, MockLLMService
@@ -137,8 +145,12 @@ async def _process_pending_items_async(limit: int) -> Dict[str, Any]:
             collection_name="trend_items"
         )
 
-        # Create and run pipeline
-        pipeline = create_standard_pipeline(embedding_service, llm_service)
+        # Create and run pipeline with translation support
+        pipeline = create_standard_pipeline(
+            embedding_service,
+            llm_service,
+            translation_manager=translation_manager
+        )
         start_time = datetime.utcnow()
 
         # Convert ProcessedItems to RawItems for pipeline
@@ -501,12 +513,20 @@ async def _test_pipeline_async(sample_size: int) -> Dict[str, Any]:
         raw_items.append(item)
 
     # Initialize AI services (real or mock)
+    translation_manager = None
     if use_real_services:
         logger.info(f"Testing pipeline with real AI services (LLM: {llm_provider})")
         from trend_agent.services import ServiceFactory
         service_factory = ServiceFactory()
         embedding_service = service_factory.get_embedding_service()
         llm_service = service_factory.get_llm_service(provider=llm_provider)
+
+        # Get translation manager if translation is enabled
+        try:
+            translation_manager = service_factory.get_translation_manager()
+            logger.info("Translation manager initialized for pipeline test")
+        except Exception as e:
+            logger.warning(f"Translation manager not available: {e}")
     else:
         logger.info("Testing pipeline with mock AI services")
         from tests.mocks.intelligence import MockEmbeddingService, MockLLMService
@@ -515,8 +535,12 @@ async def _test_pipeline_async(sample_size: int) -> Dict[str, Any]:
         service_factory = None
 
     try:
-        # Run pipeline
-        pipeline = create_standard_pipeline(embedding_service, llm_service)
+        # Run pipeline with translation support
+        pipeline = create_standard_pipeline(
+            embedding_service,
+            llm_service,
+            translation_manager=translation_manager
+        )
 
         start_time = datetime.utcnow()
         result = await pipeline.run(raw_items)

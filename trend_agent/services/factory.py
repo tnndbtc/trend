@@ -338,13 +338,22 @@ class ServiceFactory:
             logger.warning(f"Translation cache not available: {e}")
 
         # Provider priority
-        priority = self.config.get("translation_provider_priority") or [
-            "libretranslate",  # Free first
-            "openai",  # Good quality
-            "deepl",  # Best quality
-        ]
+        priority_config = (
+            self.config.get("translation_provider_priority")
+            or os.getenv("TRANSLATION_PROVIDER_PRIORITY")
+            or "libretranslate,openai,deepl"  # Default priority (FREE first!)
+        )
+
+        # Handle both list and comma-separated string
+        if isinstance(priority_config, str):
+            priority = [p.strip() for p in priority_config.split(",")]
+        else:
+            priority = priority_config
+
         # Filter to only available providers
         priority = [p for p in priority if p in providers]
+
+        logger.info(f"Translation provider priority: {', '.join(priority)}")
 
         # Create manager
         manager = TranslationManager(
