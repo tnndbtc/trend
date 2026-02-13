@@ -26,14 +26,19 @@ beautifulsoup4>=4.12.0
 trafilatura>=1.6.0  # Web content extraction
 spacy>=3.7.0  # Optional for entity extraction
 
+# Free NLP for summarization (default, replaces paid OpenAI)
+sumy>=0.11.0  # Extractive summarization algorithms
+nltk>=3.8.0  # Natural language toolkit
+gensim>=4.3.0  # Topic modeling and document similarity
+
 # Task scheduling
 apscheduler>=3.10.4
 
 # HTTP client
 aiohttp>=3.9.0
 
-# AI/LLM APIs
-openai>=1.12.0
+# AI/LLM APIs (optional, admin-configurable)
+openai>=1.12.0  # Kept for admin toggle, free NLP used by default
 
 # Monitoring and observability
 prometheus-client>=0.19.0

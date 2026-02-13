@@ -162,12 +162,13 @@ class ServiceFactory:
     # LLM Services
     # ========================================================================
 
-    def get_llm_service(self, provider: str = "openai", force_new: bool = False):
+    def get_llm_service(self, provider: Optional[str] = None, force_new: bool = False):
         """
         Get LLM service instance.
 
         Args:
-            provider: Provider name ("openai", "anthropic")
+            provider: Provider name ("free", "openai", "anthropic")
+                     If None, loads from SystemSettings (default)
             force_new: Force creation of new instance (default: False)
 
         Returns:
@@ -176,6 +177,24 @@ class ServiceFactory:
         Raises:
             ValueError: If provider is not supported or configuration is invalid
         """
+        # If no provider specified, load from SystemSettings
+        if provider is None:
+            try:
+                # Try to import Django models (only works in Django context)
+                # Try both import paths to support different contexts
+                try:
+                    from trends_viewer.models_system import SystemSettings
+                except ImportError:
+                    from web_interface.trends_viewer.models_system import SystemSettings
+
+                settings = SystemSettings.load()
+                provider = settings.summarization_provider
+                logger.info(f"Loaded provider '{provider}' from SystemSettings")
+            except Exception as e:
+                # Fallback to environment variable or default
+                provider = os.getenv('LLM_PROVIDER', 'free')
+                logger.warning(f"Could not load SystemSettings, using provider '{provider}': {e}")
+
         cache_key = f"llm_{provider}"
 
         # Return cached instance unless force_new is True
@@ -183,14 +202,16 @@ class ServiceFactory:
             return self._services[cache_key]
 
         # Create new instance based on provider
-        if provider == "openai":
+        if provider == "free":
+            service = self._create_free_llm_service()
+        elif provider == "openai":
             service = self._create_openai_llm_service()
         elif provider == "anthropic":
             service = self._create_anthropic_llm_service()
         else:
             raise ValueError(
                 f"Unsupported LLM provider: {provider}. "
-                f"Available: openai, anthropic"
+                f"Available: free, openai, anthropic"
             )
 
         # Cache the service
@@ -231,6 +252,39 @@ class ServiceFactory:
             model=model,
             max_retries=max_retries,
             timeout=timeout,
+        )
+
+    def _create_free_llm_service(self):
+        """
+        Create free summarization service using classical NLP.
+
+        Returns:
+            FreeSummarizationService instance
+
+        Note:
+            This service works completely offline with zero API costs.
+            Uses extractive summarization algorithms (TextRank, LexRank, LSA).
+        """
+        from trend_agent.services.free_summarization import FreeSummarizationService
+
+        # Load algorithm from SystemSettings or config
+        algorithm = 'textrank'  # default
+        language = 'english'  # default
+
+        try:
+            from web_interface.trends_viewer.models_system import SystemSettings
+            settings = SystemSettings.load()
+            algorithm = settings.free_summarization_algorithm
+        except Exception as e:
+            logger.debug(f"Could not load free algorithm from SystemSettings: {e}")
+            # Try environment variable
+            algorithm = os.getenv('FREE_SUMMARIZATION_ALGORITHM', 'textrank')
+
+        language = self.config.get('summarization_language', 'english')
+
+        return FreeSummarizationService(
+            algorithm=algorithm,
+            language=language
         )
 
     # ========================================================================

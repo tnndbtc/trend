@@ -1,5 +1,8 @@
 from django.shortcuts import render, get_object_or_404
 from django.views.generic import ListView, DetailView
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
 from .models import CollectionRun, CollectedTopic, TrendCluster
 import asyncio
 import logging
@@ -39,13 +42,35 @@ def normalize_lang_code(lang_code):
     return lang_map.get(lang_code, lang_code)
 
 
-def translate_text_sync(text, target_lang='zh'):
+def get_preferred_provider(session):
+    """
+    Get preferred translation provider from session.
+
+    Args:
+        session: Django request session
+
+    Returns:
+        Preferred provider name or None
+    """
+    provider_pref = session.get('translation_provider', 'free')
+
+    # Map preference to provider name
+    if provider_pref == 'ai':
+        # Try OpenAI first, then DeepL, then LibreTranslate as fallback
+        return 'openai'  # TranslationManager will handle fallback
+    else:
+        # Use free provider (LibreTranslate)
+        return 'libretranslate'
+
+
+def translate_text_sync(text, target_lang='zh', session=None):
     """
     Synchronously translate text to target language.
 
     Args:
         text: Text to translate
         target_lang: Target language code (default: 'zh' for Chinese)
+        session: Django session (optional, for provider preference)
 
     Returns:
         Translated text, or original text if translation fails
@@ -59,16 +84,24 @@ def translate_text_sync(text, target_lang='zh'):
             logger.warning("Translation manager not available")
             return text
 
+        # Get preferred provider from session
+        preferred_provider = get_preferred_provider(session) if session else None
+
         # Normalize language code for LibreTranslate
         normalized_lang = normalize_lang_code(target_lang)
-        logger.info(f"Translating text to {normalized_lang} (original: {target_lang})")
+        logger.info(f"Translating text to {normalized_lang} (original: {target_lang}, provider: {preferred_provider})")
 
         # Run async translation in sync context
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
             translated = loop.run_until_complete(
-                manager.translate(text, normalized_lang, source_language='en')
+                manager.translate(
+                    text,
+                    normalized_lang,
+                    source_language='en',
+                    preferred_provider=preferred_provider
+                )
             )
             logger.info(f"Translation successful: '{text[:50]}...' -> '{translated[:50]}...'")
             return translated
@@ -79,13 +112,57 @@ def translate_text_sync(text, target_lang='zh'):
         return text  # Return original text on error
 
 
-def translate_trend(trend, target_lang='zh'):
+@require_POST
+def set_translation_provider(request):
+    """
+    AJAX endpoint to set translation provider preference.
+
+    Sets session variable 'translation_provider' to either 'free' or 'ai'.
+
+    Args:
+        request: HTTP request with POST data containing 'provider'
+
+    Returns:
+        JsonResponse with status
+    """
+    try:
+        provider = request.POST.get('provider', 'free')
+
+        # Validate provider value
+        if provider not in ['free', 'ai']:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Invalid provider value'
+            }, status=400)
+
+        # Store in session
+        request.session['translation_provider'] = provider
+
+        provider_name = 'FREE (LibreTranslate)' if provider == 'free' else 'AI (OpenAI/DeepL)'
+        logger.info(f"Translation provider updated to: {provider_name}")
+
+        return JsonResponse({
+            'status': 'success',
+            'provider': provider,
+            'provider_name': provider_name
+        })
+
+    except Exception as e:
+        logger.error(f"Error setting translation provider: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+
+def translate_trend(trend, target_lang='zh', session=None):
     """
     Translate a TrendCluster object to target language.
 
     Args:
         trend: TrendCluster instance
         target_lang: Target language code
+        session: Django session (optional, for provider preference)
 
     Returns:
         Modified trend object with translated fields
@@ -95,11 +172,11 @@ def translate_trend(trend, target_lang='zh'):
 
     try:
         # Translate title and summary
-        trend.title = translate_text_sync(trend.title, target_lang)
+        trend.title = translate_text_sync(trend.title, target_lang, session)
         if trend.summary:
-            trend.summary = translate_text_sync(trend.summary, target_lang)
+            trend.summary = translate_text_sync(trend.summary, target_lang, session)
         if trend.full_summary:
-            trend.full_summary = translate_text_sync(trend.full_summary, target_lang)
+            trend.full_summary = translate_text_sync(trend.full_summary, target_lang, session)
 
         # Mark as translated (for UI display)
         trend.is_translated = True
@@ -111,13 +188,14 @@ def translate_trend(trend, target_lang='zh'):
     return trend
 
 
-def translate_topic(topic, target_lang='zh'):
+def translate_topic(topic, target_lang='zh', session=None):
     """
     Translate a CollectedTopic object to target language.
 
     Args:
         topic: CollectedTopic instance
         target_lang: Target language code
+        session: Django session (optional, for provider preference)
 
     Returns:
         Modified topic object with translated fields
@@ -127,11 +205,11 @@ def translate_topic(topic, target_lang='zh'):
 
     try:
         # Translate title and description
-        topic.title = translate_text_sync(topic.title, target_lang)
+        topic.title = translate_text_sync(topic.title, target_lang, session)
         if topic.description:
-            topic.description = translate_text_sync(topic.description, target_lang)
+            topic.description = translate_text_sync(topic.description, target_lang, session)
         if topic.title_summary:
-            topic.title_summary = translate_text_sync(topic.title_summary, target_lang)
+            topic.title_summary = translate_text_sync(topic.title_summary, target_lang, session)
 
         # Mark as translated
         topic.is_translated = True
@@ -155,8 +233,8 @@ def dashboard(request):
         'recent_runs': recent_runs,
     }
 
-    # Language support
-    target_lang = request.GET.get('lang', 'en')
+    # Language support (from middleware)
+    target_lang = getattr(request, 'LANGUAGE_CODE', 'en')
     stats['current_lang'] = target_lang
 
     if latest_run:
@@ -168,7 +246,7 @@ def dashboard(request):
         if target_lang != 'en':
             logger.info(f"Translating {len(latest_trends)} dashboard trends to {target_lang}")
             for trend in latest_trends:
-                translate_trend(trend, target_lang)
+                translate_trend(trend, target_lang, request.session)
 
         stats['latest_trends'] = latest_trends
 
@@ -201,15 +279,15 @@ class TrendListView(ListView):
             context['current_run'] = CollectionRun.objects.filter(status='completed').first()
         context['all_runs'] = CollectionRun.objects.all()[:10]
 
-        # Language support
-        target_lang = self.request.GET.get('lang', 'en')
+        # Language support (from middleware)
+        target_lang = getattr(self.request, 'LANGUAGE_CODE', 'en')
         context['current_lang'] = target_lang
 
         # Translate trends if requested
         if target_lang != 'en' and 'object_list' in context:
             logger.info(f"Translating {len(context['object_list'])} trends to {target_lang}")
             for trend in context['object_list']:
-                translate_trend(trend, target_lang)
+                translate_trend(trend, target_lang, self.request.session)
 
         return context
 
@@ -224,18 +302,18 @@ class TrendDetailView(DetailView):
         context = super().get_context_data(**kwargs)
         context['topics'] = self.object.topics.all()
 
-        # Language support
-        target_lang = self.request.GET.get('lang', 'en')
+        # Language support (from middleware)
+        target_lang = getattr(self.request, 'LANGUAGE_CODE', 'en')
         context['current_lang'] = target_lang
 
         # Translate trend and topics if requested
         if target_lang != 'en':
             logger.info(f"Translating trend detail to {target_lang}")
-            translate_trend(self.object, target_lang)
+            translate_trend(self.object, target_lang, self.request.session)
 
             # Translate all topics in this trend
             for topic in context['topics']:
-                translate_topic(topic, target_lang)
+                translate_topic(topic, target_lang, self.request.session)
 
         return context
 

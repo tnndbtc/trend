@@ -2,7 +2,7 @@
 Translation Manager with provider selection, fallback, and caching.
 
 Provides intelligent translation routing with multiple providers,
-automatic fallback, and Redis-based caching to minimize costs.
+automatic fallback, and Redis-based + database caching to minimize costs.
 """
 
 import hashlib
@@ -14,6 +14,118 @@ from trend_agent.observability.metrics import api_request_counter
 from trend_agent.storage.interfaces import CacheRepository
 
 logger = logging.getLogger(__name__)
+
+
+def get_db_translation(source_text_hash: str, source_lang: Optional[str], target_lang: str) -> Optional[str]:
+    """
+    Get translation from database cache.
+
+    This function is designed to work both inside and outside Django context.
+    Returns None if Django is not available or translation not found.
+
+    Args:
+        source_text_hash: MD5 hash of source text
+        source_lang: Source language code
+        target_lang: Target language code
+
+    Returns:
+        Cached translation or None
+    """
+    try:
+        # Import Django models (will fail if Django not configured)
+        try:
+            from web_interface.trends_viewer.models import TranslatedContent
+        except ImportError:
+            # Try alternate import path (when running inside web container)
+            from trends_viewer.models import TranslatedContent
+
+        # Query database
+        cached = TranslatedContent.objects.filter(
+            source_text_hash=source_text_hash,
+            source_language=source_lang or 'auto',
+            target_language=target_lang
+        ).first()
+
+        if cached:
+            logger.info(
+                f"[DB CACHE] ✓ HIT - Found translation in database "
+                f"(hash: {source_text_hash[:8]}..., {source_lang or 'auto'} -> {target_lang}, provider: {cached.provider})"
+            )
+            return cached.translated_text
+
+        logger.debug(
+            f"[DB CACHE] ✗ MISS - Translation not in database "
+            f"(hash: {source_text_hash[:8]}..., {source_lang or 'auto'} -> {target_lang})"
+        )
+        return None
+
+    except ImportError:
+        # Django not available - skip database cache
+        logger.debug("Database cache not available (Django not configured)")
+        return None
+    except Exception as e:
+        logger.warning(f"Database cache lookup failed: {e}")
+        return None
+
+
+def save_db_translation(
+    source_text: str,
+    source_text_hash: str,
+    translation: str,
+    source_lang: Optional[str],
+    target_lang: str,
+    provider: str = 'libretranslate'
+) -> bool:
+    """
+    Save translation to database cache.
+
+    This function is designed to work both inside and outside Django context.
+    Returns False if Django is not available or save fails.
+
+    Args:
+        source_text: Original text (for logging)
+        source_text_hash: MD5 hash of source text
+        translation: Translated text
+        source_lang: Source language code
+        target_lang: Target language code
+        provider: Provider name
+
+    Returns:
+        True if saved successfully
+    """
+    try:
+        # Import Django models (will fail if Django not configured)
+        try:
+            from web_interface.trends_viewer.models import TranslatedContent
+        except ImportError:
+            # Try alternate import path (when running inside web container)
+            from trends_viewer.models import TranslatedContent
+
+        # Create or update translation record
+        obj, created = TranslatedContent.objects.update_or_create(
+            source_text_hash=source_text_hash,
+            source_language=source_lang or 'auto',
+            target_language=target_lang,
+            defaults={
+                'translated_text': translation,
+                'provider': provider,
+            }
+        )
+
+        action = "CREATED" if created else "UPDATED"
+        logger.info(
+            f"[DB CACHE] ✓ {action} - Saved translation to database "
+            f"(hash: {source_text_hash[:8]}..., {source_lang or 'auto'} -> {target_lang}, provider: {provider})"
+        )
+        return True
+
+    except ImportError:
+        # Django not available - skip database cache
+        logger.debug("Database cache not available (Django not configured)")
+        return False
+    except Exception as e:
+        logger.warning(f"Database cache save failed: {e}")
+        return False
 
 
 class TranslationCache:
@@ -79,6 +191,11 @@ class TranslationCache:
         """
         Get cached translation.
 
+        Lookup order:
+        1. Redis cache (fast, in-memory)
+        2. Database cache (persistent, slower)
+        3. None (will trigger API call)
+
         Args:
             text: Original text
             source_lang: Source language code (None for auto-detect)
@@ -92,22 +209,39 @@ class TranslationCache:
 
         cache_key = self._generate_cache_key(text, source_lang, target_lang)
 
+        # Step 1: Check Redis cache (fast)
         try:
             cached = await self.cache_repo.get(cache_key)
 
             if cached:
                 self._cache_hits += 1
-                logger.debug(f"Cache HIT: {cache_key[:50]}...")
+                logger.debug(f"[REDIS CACHE] HIT: {cache_key[:50]}...")
                 return cached
 
-            self._cache_misses += 1
-            logger.debug(f"Cache MISS: {cache_key[:50]}...")
-            return None
-
         except Exception as e:
-            logger.warning(f"Cache get failed: {e}")
-            self._cache_misses += 1
-            return None
+            logger.warning(f"Redis cache get failed: {e}")
+
+        # Step 2: Check Database cache (persistent)
+        # Generate MD5 hash for database lookup
+        source = source_lang or "auto"
+        hash_input = f"{text}|{source}|{target_lang}".encode("utf-8")
+        text_hash = hashlib.md5(hash_input).hexdigest()
+
+        db_cached = get_db_translation(text_hash, source_lang, target_lang)
+        if db_cached:
+            self._cache_hits += 1
+            # Populate Redis cache for faster future lookups
+            try:
+                await self.cache_repo.set(cache_key, db_cached, ttl_seconds=self.ttl_seconds)
+                logger.debug(f"[REDIS CACHE] Populated from database: {cache_key[:50]}...")
+            except Exception as e:
+                logger.warning(f"Failed to populate Redis from database: {e}")
+            return db_cached
+
+        # Step 3: Not found in either cache
+        self._cache_misses += 1
+        logger.debug(f"Cache MISS (Redis + DB): {cache_key[:50]}...")
+        return None
 
     async def set(
         self,
@@ -115,32 +249,55 @@ class TranslationCache:
         translation: str,
         source_lang: Optional[str],
         target_lang: str,
+        provider: str = 'libretranslate',
     ) -> bool:
         """
         Cache a translation.
+
+        Saves to both Redis (fast, temporary) and Database (persistent).
 
         Args:
             text: Original text
             translation: Translated text
             source_lang: Source language code
             target_lang: Target language code
+            provider: Translation provider used
 
         Returns:
-            True if cached successfully
+            True if cached successfully to at least one cache
         """
         if not text or not translation:
             return False
 
         cache_key = self._generate_cache_key(text, source_lang, target_lang)
+        success = False
 
+        # Save to Redis cache (fast, temporary)
         try:
             await self.cache_repo.set(cache_key, translation, ttl_seconds=self.ttl_seconds)
-            logger.debug(f"Cached translation: {cache_key[:50]}...")
-            return True
-
+            logger.debug(f"[REDIS CACHE] Saved: {cache_key[:50]}...")
+            success = True
         except Exception as e:
-            logger.warning(f"Cache set failed: {e}")
-            return False
+            logger.warning(f"Redis cache set failed: {e}")
+
+        # Save to Database cache (persistent)
+        source = source_lang or "auto"
+        hash_input = f"{text}|{source}|{target_lang}".encode("utf-8")
+        text_hash = hashlib.md5(hash_input).hexdigest()
+
+        db_success = save_db_translation(
+            source_text=text,
+            source_text_hash=text_hash,
+            translation=translation,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            provider=provider
+        )
+
+        if db_success:
+            success = True
+
+        return success
 
     async def get_batch(
         self,
@@ -173,6 +330,7 @@ class TranslationCache:
         translations: Dict[str, str],
         source_lang: Optional[str],
         target_lang: str,
+        provider: str = 'libretranslate',
     ) -> int:
         """
         Cache multiple translations.
@@ -181,6 +339,7 @@ class TranslationCache:
             translations: Dictionary mapping original text to translation
             source_lang: Source language code
             target_lang: Target language code
+            provider: Translation provider used
 
         Returns:
             Number of translations successfully cached
@@ -188,7 +347,7 @@ class TranslationCache:
         cached_count = 0
 
         for text, translation in translations.items():
-            if await self.set(text, translation, source_lang, target_lang):
+            if await self.set(text, translation, source_lang, target_lang, provider):
                 cached_count += 1
 
         return cached_count
@@ -412,9 +571,9 @@ class TranslationManager:
                 self._provider_usage[provider_name] += 1
                 self._total_translations += 1
 
-                # Cache the result
+                # Cache the result (with provider info for database)
                 if self.cache:
-                    await self.cache.set(text, translation, source_language, target_language)
+                    await self.cache.set(text, translation, source_language, target_language, provider_name)
 
                 logger.info(
                     f"[TRANSLATION] ✓ SUCCESS with {provider_name.upper()} "
@@ -533,11 +692,11 @@ class TranslationManager:
                 self._provider_usage[provider_name] += len(texts_to_translate)
                 self._total_translations += len(texts_to_translate)
 
-                # Cache new translations
+                # Cache new translations (with provider info for database)
                 if self.cache:
                     new_translations = dict(zip(texts_to_translate, batch_translations))
                     await self.cache.set_batch(
-                        new_translations, source_language, target_language
+                        new_translations, source_language, target_language, provider_name
                     )
 
             except Exception as e:

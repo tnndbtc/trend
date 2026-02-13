@@ -20,6 +20,9 @@ urlpatterns = [
     path('api/preferences/reset/', views_preferences.reset_preferences_ajax, name='reset_preferences_ajax'),
     path('api/preferences/preview/', views_preferences.get_filter_preview, name='filter_preview'),
 
+    # Translation provider toggle (Session D)
+    path('api/translation/provider/', views.set_translation_provider, name='set_translation_provider'),
+
     # Authentication (Phase 2)
     path('register/', views_auth.register_view, name='register'),
     path('login/', views_auth.login_view, name='login'),

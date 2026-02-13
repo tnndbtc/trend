@@ -66,12 +66,12 @@ def apply_source_diversity_limit(ranked_topics, max_total, max_percentage_per_so
                 if len(selected) >= max_total:
                     break
 
-        # If no topics were added this round, move to next position
+        # If no topics were added this round, we're done (all sources exhausted)
         if not added_any:
-            position += 1
-            # If we've exhausted all positions, break
-            if all(position >= len(topics) for topics in by_source.values()):
-                break
+            break
+
+        # Move to next position for next round
+        position += 1
 
     return selected
 
@@ -83,8 +83,8 @@ class Command(BaseCommand):
         parser.add_argument(
             '--max-posts-per-category',
             type=int,
-            default=5,
-            help='Maximum posts to keep per category after clustering (default: 5)'
+            default=1000,
+            help='Maximum posts to keep per category after clustering (default: 1000)'
         )
 
     def handle(self, *args, **options):

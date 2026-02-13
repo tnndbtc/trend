@@ -369,3 +369,115 @@ class CrawlerSource(models.Model):
             'timeout_seconds': self.timeout_seconds,
             'retry_count': self.retry_count,
         }
+
+
+class TranslatedContent(models.Model):
+    """
+    Persistent storage for translations to reduce API costs.
+
+    Stores translations from various providers with MD5 hash-based lookup
+    for efficient duplicate detection and caching.
+
+    Features:
+    - Content-based deduplication using MD5 hash
+    - Multi-provider support (LibreTranslate, OpenAI, DeepL)
+    - Automatic timestamps for cache management
+    - Indexed for fast lookups
+
+    Usage:
+        # Check if translation exists
+        cached = TranslatedContent.objects.filter(
+            source_text_hash=hash_value,
+            source_language='en',
+            target_language='zh'
+        ).first()
+
+        # Create new translation record
+        TranslatedContent.objects.create(
+            source_text_hash=hash_value,
+            source_language='en',
+            target_language='zh',
+            translated_text='翻译后的文本',
+            provider='libretranslate'
+        )
+    """
+
+    # MD5 hash of source text for efficient lookups
+    source_text_hash = models.CharField(
+        max_length=32,
+        help_text="MD5 hash of source text for deduplication"
+    )
+
+    # Language codes (ISO 639-1)
+    source_language = models.CharField(
+        max_length=10,
+        help_text="Source language code (e.g., 'en', 'zh', 'auto')"
+    )
+
+    target_language = models.CharField(
+        max_length=10,
+        help_text="Target language code (e.g., 'en', 'zh', 'es')"
+    )
+
+    # Translation content
+    translated_text = models.TextField(
+        help_text="The translated text"
+    )
+
+    # Provider tracking
+    provider = models.CharField(
+        max_length=20,
+        choices=[
+            ('libretranslate', 'LibreTranslate'),
+            ('openai', 'OpenAI'),
+            ('deepl', 'DeepL'),
+            ('google', 'Google Translate'),
+            ('other', 'Other'),
+        ],
+        default='libretranslate',
+        help_text="Translation provider used"
+    )
+
+    # Timestamps
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="When this translation was first cached"
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        help_text="When this translation was last updated"
+    )
+
+    class Meta:
+        # Ensure unique translation per source hash + language pair
+        unique_together = [
+            ['source_text_hash', 'source_language', 'target_language']
+        ]
+
+        # Indexes for fast lookups
+        indexes = [
+            models.Index(fields=['source_text_hash', 'target_language']),
+            models.Index(fields=['target_language', 'created_at']),
+            models.Index(fields=['provider', 'created_at']),
+        ]
+
+        ordering = ['-created_at']
+        verbose_name = "Translated Content"
+        verbose_name_plural = "Translated Contents"
+
+    def __str__(self):
+        return f"{self.source_language} → {self.target_language} ({self.provider}) - {self.source_text_hash[:8]}..."
+
+
+# Import SystemSettings from separate module
+from .models_system import SystemSettings
+
+__all__ = [
+    'CollectionRun',
+    'CollectedTopic',
+    'TrendCluster',
+    'CrawlerSource',
+    'TranslatedContent',
+    'SystemSettings',
+]

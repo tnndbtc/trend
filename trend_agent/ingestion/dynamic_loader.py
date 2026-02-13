@@ -311,7 +311,7 @@ class DynamicPluginLoader:
 
                 sandbox = get_sandbox(
                     timeout_seconds=cfg.get('timeout_seconds', 30),
-                    max_memory_mb=100
+                    max_memory_mb=512
                 )
 
                 logger.info(f"Executing custom plugin code for: {cfg['name']}")
@@ -380,10 +380,11 @@ class DynamicPluginLoader:
             os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'web_interface.settings')
             django.setup()
 
-            from web_interface.trends_viewer.models import CrawlerSource
+            from trends_viewer.models import CrawlerSource
+            from asgiref.sync import sync_to_async
 
-            # Query enabled sources
-            sources = CrawlerSource.objects.filter(enabled=True)
+            # Query enabled sources (wrap in sync_to_async)
+            sources = await sync_to_async(list)(CrawlerSource.objects.filter(enabled=True))
 
             created_plugins = []
 
@@ -460,10 +461,11 @@ class DynamicPluginLoader:
             os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'web_interface.settings')
             django.setup()
 
-            from web_interface.trends_viewer.models import CrawlerSource
+            from trends_viewer.models import CrawlerSource
+            from asgiref.sync import sync_to_async
 
-            # Get source
-            source = CrawlerSource.objects.get(id=source_id)
+            # Get source (wrap in sync_to_async)
+            source = await sync_to_async(CrawlerSource.objects.get)(id=source_id)
 
             # Unregister old plugin if exists
             old_plugin_name = self._loaded_sources.get(source_id)

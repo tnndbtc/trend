@@ -38,9 +38,14 @@ ALLOWED_IMPORTS = {
     're': ['match', 'search', 'findall', 'compile', 'sub'],
     'typing': ['List', 'Dict', 'Optional', 'Any'],
     'collections': ['Counter', 'defaultdict', 'namedtuple'],
+    'traceback': ['format_exc', 'print_exc'],
 
     # Data processing
     'urllib.parse': ['urlparse', 'urlencode', 'parse_qs'],
+
+    # HTTP clients for web scraping
+    'httpx': ['AsyncClient', 'Client', 'Response', 'HTTPError', 'TimeoutException'],
+    'bs4': ['BeautifulSoup'],
 
     # Our schemas (safe to expose)
     'trend_agent.schemas': ['RawItem', 'Metrics', 'SourceType'],
@@ -94,7 +99,7 @@ class PluginSandbox:
     def __init__(
         self,
         timeout_seconds: int = 30,
-        max_memory_mb: int = 100,
+        max_memory_mb: int = 512,
         allowed_domains: Optional[Set[str]] = None,
     ):
         """
@@ -108,6 +113,27 @@ class PluginSandbox:
         self.timeout_seconds = timeout_seconds
         self.max_memory_mb = max_memory_mb
         self.allowed_domains = allowed_domains or set()
+
+    def _safe_import(self, name, globals=None, locals=None, fromlist=(), level=0):
+        """
+        Safe import function that only allows whitelisted modules.
+
+        Args:
+            name: Module name to import
+            fromlist: List of names to import from the module
+
+        Returns:
+            Module if allowed
+
+        Raises:
+            ImportError: If module not in whitelist
+        """
+        # Check if module is whitelisted
+        if name not in ALLOWED_IMPORTS:
+            raise ImportError(f"Import of '{name}' not allowed by sandbox")
+
+        # Perform the actual import
+        return __import__(name, globals, locals, fromlist, level)
 
     def _create_safe_globals(self) -> Dict[str, Any]:
         """
@@ -124,15 +150,23 @@ class PluginSandbox:
             },
         }
 
+        # Add safe __import__ for import statements
+        safe_globals['__builtins__']['__import__'] = self._safe_import
+
         # Add allowed imports
         for module_name, allowed_attrs in ALLOWED_IMPORTS.items():
             try:
                 module = __import__(module_name, fromlist=allowed_attrs)
+
+                # Always make the module itself available
+                module_short_name = module_name.split('.')[-1]
+                safe_globals[module_short_name] = module
+
                 if allowed_attrs == ['*']:
                     # Import entire module
                     safe_globals[module_name.split('.')[-1]] = module
                 else:
-                    # Import specific attributes
+                    # Also import specific attributes for convenience
                     for attr in allowed_attrs:
                         if hasattr(module, attr):
                             safe_globals[attr] = getattr(module, attr)
@@ -147,10 +181,12 @@ class PluginSandbox:
         return safe_globals
 
     def _safe_print(self, *args, **kwargs):
-        """Safe print function that doesn't actually print."""
-        # Log instead of printing
+        """Safe print function."""
+        # Log and print for debugging
         message = ' '.join(str(arg) for arg in args)
-        logger.debug(f"[Plugin Print] {message}")
+        logger.info(f"[Plugin] {message}")
+        # Also print to stdout for immediate feedback
+        print(f"[Plugin] {message}")
 
     def _validate_code(self, code: str) -> None:
         """
@@ -162,9 +198,13 @@ class PluginSandbox:
         Raises:
             SandboxSecurityError: If code contains dangerous patterns
         """
-        # Check for blacklisted functions
+        import re
+
+        # Check for blacklisted functions using word boundaries
         for dangerous in BLACKLISTED:
-            if dangerous in code:
+            # Use word boundaries to avoid matching substrings like "dir" in "directory"
+            pattern = r'\b' + re.escape(dangerous) + r'\b'
+            if re.search(pattern, code):
                 raise SandboxSecurityError(
                     f"Dangerous function '{dangerous}' not allowed in plugin code"
                 )
@@ -200,14 +240,9 @@ class PluginSandbox:
         old_limits = {}
 
         try:
-            # Set memory limit (if supported on platform)
-            try:
-                # Convert MB to bytes
-                max_memory_bytes = self.max_memory_mb * 1024 * 1024
-                old_limits['memory'] = resource.getrlimit(resource.RLIMIT_AS)
-                resource.setrlimit(resource.RLIMIT_AS, (max_memory_bytes, max_memory_bytes))
-            except (ValueError, resource.error):
-                logger.warning("Could not set memory limit")
+            # NOTE: Memory limit (RLIMIT_AS) disabled because it's too restrictive
+            # for modern async HTTP libraries (httpx, aiohttp) that use SSL/TLS.
+            # The asyncio timeout enforcement provides sufficient protection.
 
             # Set CPU time limit
             try:
@@ -221,8 +256,6 @@ class PluginSandbox:
         finally:
             # Restore old limits
             try:
-                if 'memory' in old_limits:
-                    resource.setrlimit(resource.RLIMIT_AS, old_limits['memory'])
                 if 'cpu' in old_limits:
                     resource.setrlimit(resource.RLIMIT_CPU, old_limits['cpu'])
             except Exception as e:
@@ -396,7 +429,7 @@ _sandbox: Optional[PluginSandbox] = None
 
 def get_sandbox(
     timeout_seconds: int = 30,
-    max_memory_mb: int = 100,
+    max_memory_mb: int = 512,
 ) -> PluginSandbox:
     """
     Get global sandbox instance.

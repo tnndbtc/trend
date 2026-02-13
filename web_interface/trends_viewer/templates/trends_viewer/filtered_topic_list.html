@@ -1,4 +1,5 @@
 {% extends 'trends_viewer/base.html' %}
+{% load source_filters %}
 
 {% block title %}Filtered Topics - AI Trend Intelligence{% endblock %}
 
@@ -37,13 +38,13 @@
 
 <!-- Topic List -->
 {% if topics %}
-<div style="display: flex; flex-direction: column; gap: 1rem;">
+<div id="topics-container" style="display: flex; flex-direction: column; gap: 1rem;">
     {% for topic in topics %}
-    <div class="card" style="transition: transform 0.2s, box-shadow 0.2s;">
+    <div class="card topic-card" data-topic-id="{{ topic.id }}" style="transition: transform 0.2s, box-shadow 0.2s;">
         <div style="display: flex; gap: 1rem;">
             <!-- Source Badge -->
             <div style="flex-shrink: 0;">
-                <span class="badge badge-{{ topic.source }}">{{ topic.source }}</span>
+                <span class="badge badge-{{ topic.source }}">{{ topic.source|format_source_name }}</span>
             </div>
 
             <!-- Content -->
@@ -93,26 +94,29 @@
     {% endfor %}
 </div>
 
-<!-- Pagination -->
-{% if is_paginated %}
-<div style="margin-top: 2rem; text-align: center;">
-    <div style="display: inline-flex; gap: 0.5rem; flex-wrap: wrap;">
-        {% if page_obj.has_previous %}
-        <a href="?page=1&apply_filters=1" style="padding: 0.5rem 1rem; background: #3498db; color: white; text-decoration: none; border-radius: 4px;">First</a>
-        <a href="?page={{ page_obj.previous_page_number }}&apply_filters=1" style="padding: 0.5rem 1rem; background: #3498db; color: white; text-decoration: none; border-radius: 4px;">Previous</a>
-        {% endif %}
-
-        <span style="padding: 0.5rem 1rem; background: #ecf0f1; border-radius: 4px;">
-            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
-        </span>
-
-        {% if page_obj.has_next %}
-        <a href="?page={{ page_obj.next_page_number }}&apply_filters=1" style="padding: 0.5rem 1rem; background: #3498db; color: white; text-decoration: none; border-radius: 4px;">Next</a>
-        <a href="?page={{ page_obj.paginator.num_pages }}&apply_filters=1" style="padding: 0.5rem 1rem; background: #3498db; color: white; text-decoration: none; border-radius: 4px;">Last</a>
-        {% endif %}
-    </div>
+<!-- Loading Indicator (Hidden by default) -->
+<div id="loading-indicator" style="display: none; margin-top: 2rem; text-align: center; padding: 2rem;">
+    <div class="spinner"></div>
+    <p style="color: #666; margin-top: 1rem;">Loading more topics...</p>
 </div>
-{% endif %}
+
+<!-- No More Content Message (Hidden by default) -->
+<div id="no-more-content" style="display: none; margin-top: 2rem; text-align: center; padding: 2rem; color: #999;">
+    <div style="font-size: 2rem; margin-bottom: 0.5rem;">✓</div>
+    <p>You've reached the end of the list</p>
+    <p style="font-size: 0.9rem; margin-top: 0.5rem;">
+        Showing all {{ page_obj.paginator.count }} topics
+    </p>
+</div>
+
+<!-- Hidden data for infinite scroll -->
+<div id="pagination-data"
+     data-current-page="{{ page_obj.number }}"
+     data-has-next="{{ page_obj.has_next|yesno:'true,false' }}"
+     data-next-page="{% if page_obj.has_next %}{{ page_obj.next_page_number }}{% endif %}"
+     data-total-pages="{{ page_obj.paginator.num_pages }}"
+     style="display: none;">
+</div>
 
 {% else %}
 <div class="card" style="text-align: center; padding: 3rem;">
@@ -157,6 +161,324 @@
         background: #3498db;
         color: white;
     }
+
+    /* Spinner for loading indicator */
+    .spinner {
+        width: 40px;
+        height: 40px;
+        margin: 0 auto;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #3498db;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    /* Fade-in animation for new topics */
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .topic-card.fade-in {
+        animation: fadeIn 0.5s ease-out;
+    }
 </style>
+
+<script>
+(function() {
+    'use strict';
+
+    // Format source name for display (matches Django filter)
+    function formatSourceName(source) {
+        const specialCases = {
+            'google_news': 'Google News',
+            'ap_news': 'AP News',
+            'al_jazeera': 'Al Jazeera',
+            'hackernews': 'Hacker News',
+            'bbc_news': 'BBC News',
+            'cnn': 'CNN',
+            'nytimes': 'New York Times',
+            'reddit': 'Reddit',
+            'twitter': 'Twitter',
+            'github': 'GitHub'
+        };
+        return specialCases[source] || source.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    }
+
+    // Infinite scroll state
+    let isLoading = false;
+    let hasMorePages = true;
+    let currentPage = 1;
+    let observedTriggerCard = null;
+    let intersectionObserver = null;
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeInfiniteScroll();
+    });
+
+    function initializeInfiniteScroll() {
+        // Get pagination data
+        const paginationData = document.getElementById('pagination-data');
+        if (!paginationData) {
+            console.log('No pagination data found - infinite scroll disabled');
+            return;
+        }
+
+        currentPage = parseInt(paginationData.dataset.currentPage) || 1;
+        hasMorePages = paginationData.dataset.hasNext === 'true';
+
+        console.log('Infinite scroll initialized:', {
+            currentPage,
+            hasMorePages,
+            totalPages: paginationData.dataset.totalPages
+        });
+
+        // Show "no more content" if we're already at the end
+        if (!hasMorePages) {
+            showNoMoreContent();
+            return;
+        }
+
+        // Set up Intersection Observer for the 7th item
+        setupScrollTrigger();
+    }
+
+    function setupScrollTrigger() {
+        // Get all topic cards
+        const topicCards = document.querySelectorAll('.topic-card');
+
+        if (topicCards.length === 0) {
+            console.log('No topic cards found');
+            return;
+        }
+
+        // Calculate which card should trigger loading (7th from the end)
+        // If there are 10 cards, we want to trigger when the 7th card (index 6) is visible
+        const triggerIndex = Math.min(6, Math.max(0, topicCards.length - 1));
+        const triggerCard = topicCards[triggerIndex];
+
+        if (!triggerCard) {
+            console.log('Could not find trigger card');
+            return;
+        }
+
+        // Clean up previous observer if it exists
+        if (intersectionObserver) {
+            intersectionObserver.disconnect();
+        }
+
+        // Create Intersection Observer
+        intersectionObserver = new IntersectionObserver(
+            function(entries) {
+                entries.forEach(function(entry) {
+                    if (entry.isIntersecting && !isLoading && hasMorePages) {
+                        console.log('Trigger card visible - loading next page');
+                        loadNextPage();
+                    }
+                });
+            },
+            {
+                root: null, // Use viewport as root
+                rootMargin: '100px', // Start loading 100px before the card is visible
+                threshold: 0.1 // Trigger when 10% of the card is visible
+            }
+        );
+
+        // Observe the trigger card
+        intersectionObserver.observe(triggerCard);
+        observedTriggerCard = triggerCard;
+
+        console.log(`Observing card at index ${triggerIndex} for scroll trigger`);
+    }
+
+    async function loadNextPage() {
+        if (isLoading || !hasMorePages) {
+            return;
+        }
+
+        isLoading = true;
+        showLoadingIndicator();
+
+        try {
+            // Build URL with all current filter parameters
+            const currentUrl = new URL(window.location.href);
+            const params = new URLSearchParams(currentUrl.search);
+
+            // Update page number
+            const nextPage = currentPage + 1;
+            params.set('page', nextPage);
+
+            // Make AJAX request
+            const response = await fetch(`${currentUrl.pathname}?${params.toString()}`, {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data.success && data.topics && data.topics.length > 0) {
+                // Append new topics to the container
+                appendTopics(data.topics);
+
+                // Update state
+                currentPage = data.current_page;
+                hasMorePages = data.has_next;
+
+                console.log(`Loaded page ${currentPage}:`, {
+                    topicsLoaded: data.topics.length,
+                    hasMorePages,
+                    totalPages: data.total_pages
+                });
+
+                // If there are more pages, set up observer for the new 7th card
+                if (hasMorePages) {
+                    // Wait a bit for the DOM to update
+                    setTimeout(setupScrollTrigger, 100);
+                } else {
+                    showNoMoreContent();
+                }
+            } else {
+                // No more topics
+                hasMorePages = false;
+                showNoMoreContent();
+            }
+
+        } catch (error) {
+            console.error('Error loading next page:', error);
+            alert('Failed to load more topics. Please try refreshing the page.');
+        } finally {
+            isLoading = false;
+            hideLoadingIndicator();
+        }
+    }
+
+    function appendTopics(topics) {
+        const container = document.getElementById('topics-container');
+        if (!container) {
+            console.error('Topics container not found');
+            return;
+        }
+
+        topics.forEach(function(topic) {
+            const topicCard = createTopicCard(topic);
+            container.appendChild(topicCard);
+
+            // Trigger fade-in animation
+            setTimeout(function() {
+                topicCard.classList.add('fade-in');
+            }, 10);
+        });
+    }
+
+    function createTopicCard(topic) {
+        const card = document.createElement('div');
+        card.className = 'card topic-card';
+        card.setAttribute('data-topic-id', topic.id);
+        card.style.cssText = 'transition: transform 0.2s, box-shadow 0.2s;';
+
+        // Build timestamp display
+        const timestamp = topic.timestamp ? formatTimestamp(topic.timestamp) : '';
+
+        // Build metadata items
+        const metadataItems = [
+            timestamp ? `🕒 ${timestamp}` : null,
+            topic.language && topic.language !== 'en' ? `🌐 ${topic.language.toUpperCase()}` : null,
+            topic.upvotes ? `⬆️ ${topic.upvotes}` : null,
+            topic.comments ? `💬 ${topic.comments}` : null,
+            topic.score ? `⭐ ${topic.score}` : null
+        ].filter(Boolean);
+
+        card.innerHTML = `
+            <div style="display: flex; gap: 1rem;">
+                <div style="flex-shrink: 0;">
+                    <span class="badge badge-${topic.source}">${escapeHtml(formatSourceName(topic.source))}</span>
+                </div>
+                <div style="flex: 1;">
+                    <h3 style="margin-bottom: 0.5rem; font-size: 1.1rem;">
+                        <a href="${escapeHtml(topic.url)}" target="_blank" rel="noopener noreferrer"
+                           style="color: #2c3e50; text-decoration: none;">
+                            ${escapeHtml(topic.title)}
+                        </a>
+                    </h3>
+                    ${topic.description ? `
+                    <p style="color: #666; font-size: 0.9rem; margin-bottom: 0.75rem; line-height: 1.6;">
+                        ${escapeHtml(truncateText(topic.description, 50))}
+                    </p>
+                    ` : ''}
+                    <div style="display: flex; gap: 1.5rem; font-size: 0.85rem; color: #7f8c8d; flex-wrap: wrap;">
+                        ${metadataItems.map(item => `<span>${item}</span>`).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        return card;
+    }
+
+    function formatTimestamp(isoString) {
+        const date = new Date(isoString);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day} ${hours}:${minutes}`;
+    }
+
+    function truncateText(text, wordCount) {
+        const words = text.split(/\s+/);
+        if (words.length <= wordCount) {
+            return text;
+        }
+        return words.slice(0, wordCount).join(' ') + '...';
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function showLoadingIndicator() {
+        const indicator = document.getElementById('loading-indicator');
+        if (indicator) {
+            indicator.style.display = 'block';
+        }
+    }
+
+    function hideLoadingIndicator() {
+        const indicator = document.getElementById('loading-indicator');
+        if (indicator) {
+            indicator.style.display = 'none';
+        }
+    }
+
+    function showNoMoreContent() {
+        const noMoreContent = document.getElementById('no-more-content');
+        if (noMoreContent) {
+            noMoreContent.style.display = 'block';
+        }
+    }
+})();
+</script>
 
 {% endblock %}

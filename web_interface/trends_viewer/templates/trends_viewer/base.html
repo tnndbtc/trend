@@ -74,25 +74,41 @@
         .badge-danger { background: #dc3545; color: white; }
         .language-selector {
             display: flex;
+            align-items: center;
             gap: 0.5rem;
         }
-        .lang-btn {
-            padding: 0.5rem 1rem;
+        .language-selector label {
+            font-size: 0.875rem;
+            color: rgba(255,255,255,0.8);
+            margin-right: 0.25rem;
+        }
+        .language-selector select {
+            padding: 0.5rem 2rem 0.5rem 1rem;
             background: rgba(255,255,255,0.1);
             border: 1px solid rgba(255,255,255,0.3);
             border-radius: 4px;
             color: white;
-            text-decoration: none;
             font-size: 0.875rem;
+            cursor: pointer;
             transition: all 0.3s;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='white' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.5rem center;
+            background-size: 12px;
         }
-        .lang-btn:hover {
-            background: rgba(255,255,255,0.2);
-            opacity: 1;
+        .language-selector select:hover {
+            background-color: rgba(255,255,255,0.2);
         }
-        .lang-btn.active {
-            background: #3498db;
+        .language-selector select:focus {
+            outline: none;
             border-color: #3498db;
+            background-color: rgba(255,255,255,0.15);
+        }
+        .language-selector select option {
+            background: #2c3e50;
+            color: white;
+            padding: 0.5rem;
         }
         .translation-badge {
             display: inline-block;
@@ -103,38 +119,170 @@
             font-size: 0.75rem;
             margin-left: 0.5rem;
         }
+
+        /* Translation Provider Toggle */
+        .provider-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-left: 1.5rem;
+            padding-left: 1.5rem;
+            border-left: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .provider-toggle-label {
+            font-size: 0.875rem;
+            color: rgba(255,255,255,0.8);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* iOS-style Toggle Switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #28a745;  /* Green for FREE */
+            transition: .4s;
+            border-radius: 26px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #3498db;  /* Blue for AI */
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(24px);
+        }
+
+        .toggle-labels {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.75rem;
+        }
+
+        .free-badge {
+            color: #28a745;
+            font-weight: bold;
+            padding: 0.125rem 0.375rem;
+            background: rgba(40, 167, 69, 0.1);
+            border-radius: 3px;
+        }
+
+        .ai-badge {
+            color: #3498db;
+            font-weight: bold;
+            padding: 0.125rem 0.375rem;
+            background: rgba(52, 152, 219, 0.1);
+            border-radius: 3px;
+        }
+
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #2c3e50;
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
     <nav>
         <div class="container">
             <div>
-                <h1>AI Trend Intelligence</h1>
+                <h1>{{ menu.app_title }}</h1>
             </div>
             <ul>
-                <li><a href="{% url 'trends_viewer:dashboard' %}">Dashboard</a></li>
-                <li><a href="{% url 'trends_viewer:trend_list' %}">All Trends</a></li>
-                <li><a href="{% url 'trends_viewer:topic_list' %}">All Topics</a></li>
-                <li><a href="{% url 'trends_viewer:filtered_trends' %}" style="background: rgba(52, 152, 219, 0.2); padding: 0.5rem 1rem; border-radius: 4px;">🔍 My Feed</a></li>
-                <li><a href="{% url 'trends_viewer:run_list' %}">History</a></li>
+                <li><a href="{% url 'trends_viewer:dashboard' %}">{{ menu.dashboard }}</a></li>
+                <li><a href="{% url 'trends_viewer:trend_list' %}">{{ menu.all_trends }}</a></li>
+                <li><a href="{% url 'trends_viewer:topic_list' %}">{{ menu.all_topics }}</a></li>
+                <li><a href="{% url 'trends_viewer:filtered_trends' %}" style="background: rgba(52, 152, 219, 0.2); padding: 0.5rem 1rem; border-radius: 4px;">🔍 {{ menu.my_feed }}</a></li>
+                <li><a href="{% url 'trends_viewer:run_list' %}">{{ menu.history }}</a></li>
                 {% if user.is_authenticated %}
                 <li><a href="{% url 'trends_viewer:user_profile' %}">👤 {{ user.username }}</a></li>
-                <li><a href="{% url 'trends_viewer:logout' %}">Logout</a></li>
+                <li><a href="{% url 'trends_viewer:logout' %}">{{ menu.logout }}</a></li>
                 {% else %}
-                <li><a href="{% url 'trends_viewer:login' %}">Login</a></li>
-                <li><a href="{% url 'trends_viewer:register' %}" style="background: #3498db; color: white; padding: 0.5rem 1rem; border-radius: 4px;">Sign Up</a></li>
+                <li><a href="{% url 'trends_viewer:login' %}">{{ menu.login }}</a></li>
+                <li><a href="{% url 'trends_viewer:register' %}" style="background: #3498db; color: white; padding: 0.5rem 1rem; border-radius: 4px;">{{ menu.register }}</a></li>
                 {% endif %}
                 {% if user.is_staff %}
-                <li><a href="/admin/">Admin</a></li>
+                <li><a href="/admin/">{{ menu.admin }}</a></li>
                 {% endif %}
             </ul>
-            <div class="language-selector">
-                <a href="?lang=en" class="lang-btn {% if current_lang == 'en' or not current_lang %}active{% endif %}">
-                    English
-                </a>
-                <a href="?lang=zh" class="lang-btn {% if current_lang == 'zh' %}active{% endif %}">
-                    中文
-                </a>
+            <div style="display: flex; align-items: center;">
+                <div class="language-selector">
+                    <label for="language-select">🌐</label>
+                    <select id="language-select" onchange="changeLanguage(this.value)">
+                        <option value="en" {% if current_lang == 'en' or not current_lang %}selected{% endif %}>English</option>
+                        <option value="zh" {% if current_lang == 'zh' %}selected{% endif %}>中文 (Chinese)</option>
+                        <option value="es" {% if current_lang == 'es' %}selected{% endif %}>Español (Spanish)</option>
+                        <option value="fr" {% if current_lang == 'fr' %}selected{% endif %}>Français (French)</option>
+                        <option value="de" {% if current_lang == 'de' %}selected{% endif %}>Deutsch (German)</option>
+                        <option value="ja" {% if current_lang == 'ja' %}selected{% endif %}>日本語 (Japanese)</option>
+                        <option value="ko" {% if current_lang == 'ko' %}selected{% endif %}>한국어 (Korean)</option>
+                        <option value="ru" {% if current_lang == 'ru' %}selected{% endif %}>Русский (Russian)</option>
+                    </select>
+                </div>
+
+                <div class="provider-toggle">
+                    <div class="provider-toggle-label">
+                        <span>🔤 {{ menu.translation }}:</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="provider-toggle"
+                               {% if is_ai_translation %}checked{% endif %}
+                               onchange="toggleProvider(this.checked)">
+                        <span class="slider"></span>
+                    </label>
+                    <div class="toggle-labels">
+                        <span class="free-badge">FREE</span>
+                        <span>/</span>
+                        <span class="ai-badge">AI</span>
+                    </div>
+                </div>
             </div>
         </div>
     </nav>
@@ -145,5 +293,78 @@
             {% endblock %}
         </div>
     </main>
+
+    <!-- Toast Notification Container -->
+    <div id="toast" class="toast"></div>
+
+    <script>
+        function changeLanguage(selectedLang) {
+            // Simply add ?lang= parameter and redirect
+            // Middleware will save to session and cookie automatically
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('lang', selectedLang);
+            window.location.href = currentUrl.toString();
+        }
+
+        function showToast(message, duration = 3000) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, duration);
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        function toggleProvider(isAI) {
+            const provider = isAI ? 'ai' : 'free';
+            const csrftoken = getCookie('csrftoken');
+
+            // Show loading toast
+            showToast('Switching translation provider...', 1000);
+
+            // Send AJAX request to update session
+            fetch('{% url "trends_viewer:set_translation_provider" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrftoken
+                },
+                body: `provider=${provider}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const providerName = isAI ? 'AI (OpenAI/DeepL)' : 'FREE (LibreTranslate)';
+                    showToast(`✓ Translation provider updated to ${providerName}`);
+                } else {
+                    showToast('⚠ Failed to update provider');
+                    // Revert toggle on failure
+                    document.getElementById('provider-toggle').checked = !isAI;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('⚠ Error updating provider');
+                // Revert toggle on error
+                document.getElementById('provider-toggle').checked = !isAI;
+            });
+        }
+    </script>
 </body>
 </html>

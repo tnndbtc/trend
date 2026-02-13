@@ -40,7 +40,7 @@ class FilteredTopicListView(ListView):
     model = CollectedTopic
     template_name = 'trends_viewer/filtered_topic_list.html'
     context_object_name = 'topics'
-    paginate_by = 50
+    paginate_by = 10  # Reduced for better infinite scroll UX
 
     def get_queryset(self):
         """
@@ -187,6 +187,51 @@ class FilteredTopicListView(ListView):
             'active_filters': active_filters,
             'is_filtered': len(active_filters) > 0,
         }
+
+    def render_to_response(self, context, **response_kwargs):
+        """
+        Override to support AJAX requests with JSON response.
+
+        For infinite scroll, returns JSON with:
+        - topics: list of topic data
+        - has_next: boolean
+        - next_page: int or null
+        """
+        # Check if this is an AJAX request
+        is_ajax = self.request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+        if is_ajax:
+            # Return JSON response for infinite scroll
+            topics = context['topics']
+            page_obj = context['page_obj']
+
+            topics_data = []
+            for topic in topics:
+                topics_data.append({
+                    'id': topic.id,
+                    'title': topic.title_summary or topic.title,
+                    'description': topic.full_summary or topic.description,
+                    'source': topic.source,
+                    'url': topic.url,
+                    'upvotes': topic.upvotes,
+                    'comments': topic.comments,
+                    'score': topic.score,
+                    'timestamp': topic.timestamp.isoformat() if topic.timestamp else None,
+                    'language': topic.language,
+                })
+
+            return JsonResponse({
+                'success': True,
+                'topics': topics_data,
+                'has_next': page_obj.has_next(),
+                'next_page': page_obj.next_page_number() if page_obj.has_next() else None,
+                'current_page': page_obj.number,
+                'total_pages': page_obj.paginator.num_pages,
+                'total_count': page_obj.paginator.count,
+            })
+
+        # Regular HTML response
+        return super().render_to_response(context, **response_kwargs)
 
 
 class FilteredTrendListView(ListView):

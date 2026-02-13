@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 from django.contrib import messages
-from .models import CollectionRun, CollectedTopic, TrendCluster, CrawlerSource
+from .models import CollectionRun, CollectedTopic, TrendCluster, CrawlerSource, TranslatedContent, SystemSettings
 from .models_preferences import UserPreference, UserPreferenceHistory, UserNotificationPreference
 
 
@@ -436,3 +436,435 @@ class UserNotificationPreferenceAdmin(admin.ModelAdmin):
             'classes': ('collapse',),
         }),
     )
+
+
+# ============================================================================
+# Translation Cache Admin
+# ============================================================================
+
+@admin.register(TranslatedContent)
+class TranslatedContentAdmin(admin.ModelAdmin):
+    """Admin interface for managing cached translations."""
+
+    list_display = [
+        'id',
+        'source_text_hash_display',
+        'language_pair_display',
+        'provider_badge',
+        'text_preview',
+        'created_at',
+    ]
+
+    list_filter = [
+        'provider',
+        'target_language',
+        'source_language',
+        'created_at',
+    ]
+
+    search_fields = [
+        'translated_text',
+        'source_text_hash',
+    ]
+
+    readonly_fields = [
+        'source_text_hash',
+        'created_at',
+        'updated_at',
+    ]
+
+    fieldsets = (
+        ('Translation Info', {
+            'fields': ('source_text_hash', 'source_language', 'target_language')
+        }),
+        ('Content', {
+            'fields': ('translated_text',)
+        }),
+        ('Provider', {
+            'fields': ('provider',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+
+    # Custom display methods
+    def source_text_hash_display(self, obj):
+        """Display shortened hash."""
+        return format_html('<code>{}</code>', obj.source_text_hash[:16] + '...')
+    source_text_hash_display.short_description = 'Source Hash'
+
+    def language_pair_display(self, obj):
+        """Display language pair with flags."""
+        return format_html(
+            '<span style="font-weight: bold;">{} → {}</span>',
+            obj.source_language.upper(),
+            obj.target_language.upper()
+        )
+    language_pair_display.short_description = 'Languages'
+
+    def provider_badge(self, obj):
+        """Display provider as colored badge."""
+        colors = {
+            'libretranslate': '#28a745',  # Green (free)
+            'openai': '#007bff',          # Blue (AI)
+            'deepl': '#6f42c1',           # Purple (AI)
+            'google': '#dc3545',          # Red
+            'other': '#6c757d',           # Gray
+        }
+        color = colors.get(obj.provider, '#6c757d')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 8px; '
+            'border-radius: 3px; font-size: 11px; font-weight: bold;">{}</span>',
+            color,
+            obj.get_provider_display().upper()
+        )
+    provider_badge.short_description = 'Provider'
+
+    def text_preview(self, obj):
+        """Display preview of translated text."""
+        preview = obj.translated_text[:80]
+        if len(obj.translated_text) > 80:
+            preview += '...'
+        return format_html('<span style="color: #666;">{}</span>', preview)
+    text_preview.short_description = 'Translation Preview'
+
+    # Custom actions
+    actions = [
+        'delete_old_translations',
+        'export_translations',
+    ]
+
+    def delete_old_translations(self, request, queryset):
+        """Delete translations older than selection."""
+        count = queryset.count()
+        queryset.delete()
+        self.message_user(
+            request,
+            f'{count} translation(s) deleted successfully.',
+            messages.SUCCESS
+        )
+    delete_old_translations.short_description = '🗑️ Delete selected translations'
+
+    def export_translations(self, request, queryset):
+        """Export translations (placeholder for future CSV/JSON export)."""
+        count = queryset.count()
+        self.message_user(
+            request,
+            f'Export feature coming soon! ({count} translation(s) selected)',
+            messages.INFO
+        )
+    export_translations.short_description = '📤 Export translations'
+
+
+# ============================================================================
+# System Settings Admin
+# ============================================================================
+
+@admin.register(SystemSettings)
+class SystemSettingsAdmin(admin.ModelAdmin):
+    """
+    Admin interface for system-wide settings.
+
+    This is a singleton model - only one record exists.
+    """
+
+    # Prevent adding or deleting (singleton pattern)
+    def has_add_permission(self, request):
+        """Prevent adding new settings (singleton)."""
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        """Prevent deletion of settings."""
+        return False
+
+    # List display
+    list_display = [
+        'provider_with_status',
+        'free_algorithm_display',
+        'cost_estimate_display',
+        'summaries_generated_display',
+        'updated_at',
+        'updated_by',
+    ]
+
+    # Readonly fields
+    readonly_fields = [
+        'updated_at',
+        'estimated_monthly_api_cost',
+        'total_summaries_generated',
+    ]
+
+    # Field organization
+    fieldsets = (
+        ('🤖 Summarization Provider', {
+            'fields': (
+                'summarization_provider',
+            ),
+            'description': (
+                '<strong>Choose how summaries are generated:</strong><br>'
+                '• <strong>Free NLP Tools</strong>: Works offline, zero cost, good quality (default)<br>'
+                '• <strong>OpenAI GPT</strong>: Paid API, excellent quality<br>'
+                '• <strong>Anthropic Claude</strong>: Paid API, excellent quality<br><br>'
+                '<em>Free tools are recommended for most use cases.</em>'
+            )
+        }),
+        ('⚙️ Free NLP Configuration', {
+            'fields': (
+                'free_summarization_algorithm',
+            ),
+            'description': (
+                '<strong>Algorithm to use when Free NLP is selected:</strong><br>'
+                '• <strong>TextRank</strong>: Graph-based ranking (recommended)<br>'
+                '• <strong>LexRank</strong>: Graph-based with cosine similarity<br>'
+                '• <strong>LSA</strong>: Latent Semantic Analysis<br>'
+                '• <strong>Luhn</strong>: Word frequency based (fastest)<br>'
+                '• <strong>KL</strong>: Statistical approach'
+            )
+        }),
+        ('📏 Summary Length Settings', {
+            'fields': (
+                'max_summary_length',
+                'title_summary_length',
+                'key_points_count',
+            ),
+            'classes': ('collapse',),
+        }),
+        ('🔑 OpenAI Configuration', {
+            'fields': (
+                'openai_model',
+                'openai_temperature',
+            ),
+            'classes': ('collapse',),
+            'description': 'Only used when OpenAI provider is selected'
+        }),
+        ('🔑 Anthropic Configuration', {
+            'fields': (
+                'anthropic_model',
+            ),
+            'classes': ('collapse',),
+            'description': 'Only used when Anthropic provider is selected'
+        }),
+        ('⚡ Performance', {
+            'fields': (
+                'batch_size',
+                'enable_summarization_cache',
+            ),
+            'classes': ('collapse',),
+        }),
+        ('💰 Cost Tracking', {
+            'fields': (
+                'estimated_monthly_api_cost',
+                'total_summaries_generated',
+            ),
+            'classes': ('collapse',),
+        }),
+        ('📝 Metadata', {
+            'fields': (
+                'updated_at',
+                'updated_by',
+                'notes',
+            ),
+            'classes': ('collapse',),
+        }),
+    )
+
+    # Custom display methods
+    def provider_with_status(self, obj):
+        """Show provider with visual status indicator."""
+        if obj.summarization_provider == 'free':
+            return format_html(
+                '<span style="background-color: #28a745; color: white; padding: 4px 12px; '
+                'border-radius: 4px; font-weight: bold; display: inline-block;">✓ {} (FREE)</span>',
+                obj.get_summarization_provider_display().split(' - ')[0]
+            )
+        else:
+            cost = obj.estimated_monthly_api_cost
+            return format_html(
+                '<span style="background-color: #ffc107; color: #000; padding: 4px 12px; '
+                'border-radius: 4px; font-weight: bold; display: inline-block;">💰 {} (${:.2f}/mo)</span>',
+                obj.get_summarization_provider_display().split(' - ')[0],
+                cost
+            )
+    provider_with_status.short_description = 'Current Provider'
+
+    def free_algorithm_display(self, obj):
+        """Show free algorithm if using free provider."""
+        if obj.summarization_provider == 'free':
+            return format_html(
+                '<span style="color: #28a745; font-weight: bold;">{}</span>',
+                obj.get_free_summarization_algorithm_display().split(' - ')[0]
+            )
+        return format_html('<span style="color: #999;">N/A (not using free)</span>')
+    free_algorithm_display.short_description = 'Free Algorithm'
+
+    def cost_estimate_display(self, obj):
+        """Display estimated monthly cost with color coding."""
+        cost = obj.estimated_monthly_api_cost
+
+        if cost == 0:
+            return format_html(
+                '<span style="color: #28a745; font-weight: bold; font-size: 14px;">$0.00 🎉</span>'
+            )
+        elif cost < 10:
+            color = '#ffc107'  # warning/yellow
+        elif cost < 50:
+            color = '#ff9800'  # orange
+        else:
+            color = '#f44336'  # red
+
+        return format_html(
+            '<span style="color: {}; font-weight: bold; font-size: 14px;">${:.2f}</span>',
+            color,
+            cost
+        )
+    cost_estimate_display.short_description = 'Est. Monthly Cost'
+
+    def summaries_generated_display(self, obj):
+        """Display total summaries with formatting."""
+        count = obj.total_summaries_generated
+        return format_html(
+            '<span style="font-weight: bold;">{}</span>',
+            f'{count:,}'
+        )
+    summaries_generated_display.short_description = 'Summaries Generated'
+
+    # Custom actions
+    actions = [
+        'test_free_summarization',
+        'test_current_provider',
+        'reset_counters',
+        'estimate_costs',
+    ]
+
+    def test_free_summarization(self, request, queryset):
+        """Test free summarization with sample text."""
+        import asyncio
+        from trend_agent.services.free_summarization import FreeSummarizationService
+
+        # Get settings
+        settings = queryset.first()
+
+        # Create service
+        service = FreeSummarizationService(
+            algorithm=settings.free_summarization_algorithm
+        )
+
+        # Test text
+        test_text = (
+            "Artificial intelligence is rapidly transforming technology. "
+            "Machine learning models are becoming more powerful every year. "
+            "Natural language processing enables computers to understand human language. "
+            "Computer vision allows machines to interpret visual information. "
+            "AI is being applied across many industries including healthcare, finance, and transportation."
+        )
+
+        # Run test
+        try:
+            summary = asyncio.run(service.summarize(test_text, max_length=100))
+            self.message_user(
+                request,
+                format_html(
+                    '<strong>✓ Free Summarization Test Successful</strong><br>'
+                    'Algorithm: {}<br>'
+                    'Input length: {} chars<br>'
+                    'Output length: {} chars<br>'
+                    '<em>Summary:</em> {}',
+                    settings.free_summarization_algorithm,
+                    len(test_text),
+                    len(summary),
+                    summary
+                ),
+                messages.SUCCESS
+            )
+        except Exception as e:
+            self.message_user(
+                request,
+                f'❌ Test failed: {str(e)}',
+                messages.ERROR
+            )
+    test_free_summarization.short_description = '🧪 Test Free Summarization'
+
+    def test_current_provider(self, request, queryset):
+        """Test currently selected provider."""
+        import asyncio
+        from trend_agent.services.factory import ServiceFactory
+
+        settings = queryset.first()
+
+        factory = ServiceFactory()
+        service = factory.get_llm_service(provider=settings.summarization_provider)
+
+        test_text = "AI is transforming technology. Machine learning is advancing rapidly."
+
+        try:
+            summary = asyncio.run(service.summarize(test_text, max_length=50))
+            self.message_user(
+                request,
+                format_html(
+                    '<strong>✓ Provider Test Successful</strong><br>'
+                    'Provider: {}<br>'
+                    'Summary: {}',
+                    settings.get_summarization_provider_display(),
+                    summary
+                ),
+                messages.SUCCESS
+            )
+        except Exception as e:
+            self.message_user(
+                request,
+                f'❌ Test failed: {str(e)}',
+                messages.ERROR
+            )
+    test_current_provider.short_description = '🔍 Test Current Provider'
+
+    def reset_counters(self, request, queryset):
+        """Reset usage counters."""
+        for settings in queryset:
+            settings.reset_counters()
+        self.message_user(
+            request,
+            'Usage counters reset successfully.',
+            messages.SUCCESS
+        )
+    reset_counters.short_description = '↻ Reset Counters'
+
+    def estimate_costs(self, request, queryset):
+        """Recalculate cost estimates."""
+        for settings in queryset:
+            settings.update_cost_estimate(summaries_generated=0)
+        self.message_user(
+            request,
+            'Cost estimates updated based on current provider.',
+            messages.SUCCESS
+        )
+    estimate_costs.short_description = '💰 Recalculate Costs'
+
+    def save_model(self, request, obj, form, change):
+        """Save model and track who updated it."""
+        obj.updated_by = request.user.username if request.user.is_authenticated else 'admin'
+
+        # Update cost estimate when provider changes
+        if change and 'summarization_provider' in form.changed_data:
+            obj.update_cost_estimate(summaries_generated=0)
+
+        super().save_model(request, obj, form, change)
+
+        # Show confirmation message
+        if obj.summarization_provider == 'free':
+            self.message_user(
+                request,
+                '✓ Settings saved. Using FREE summarization (zero cost, works offline).',
+                messages.SUCCESS
+            )
+        else:
+            self.message_user(
+                request,
+                format_html(
+                    '⚠️ Settings saved. Using PAID provider: {} (estimated ${:.2f}/month)',
+                    obj.get_summarization_provider_display(),
+                    obj.estimated_monthly_api_cost
+                ),
+                messages.WARNING
+            )
