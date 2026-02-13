@@ -184,6 +184,29 @@
             transform: translateX(24px);
         }
 
+        /* Disabled state for toggle */
+        .switch input:disabled + .slider {
+            background-color: #a8a8a8;  /* Grey for disabled */
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .switch input:disabled + .slider:before {
+            background-color: #e0e0e0;
+        }
+
+        .provider-toggle.disabled {
+            opacity: 0.6;
+        }
+
+        .provider-toggle.disabled .provider-toggle-label {
+            color: rgba(255,255,255,0.5);
+        }
+
+        .provider-toggle.disabled .toggle-labels {
+            opacity: 0.6;
+        }
+
         .toggle-labels {
             display: flex;
             align-items: center;
@@ -361,13 +384,13 @@
                     </select>
                 </div>
 
-                <div class="provider-toggle">
+                <div class="provider-toggle disabled">
                     <div class="provider-toggle-label">
                         <span>🔤 {{ menu.translation }}:</span>
                     </div>
                     <label class="switch">
                         <input type="checkbox" id="provider-toggle"
-                               {% if is_ai_translation %}checked{% endif %}
+                               disabled
                                onchange="toggleProvider(this.checked)">
                         <span class="slider"></span>
                     </label>
