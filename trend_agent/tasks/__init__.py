@@ -116,6 +116,12 @@ class CeleryConfig:
             "schedule": crontab(minute="*/20"),  # Every 20 minutes
             "options": {"queue": "processing"},
         },
+        # Warm translation cache every 2 hours
+        "warm-translation-cache": {
+            "task": "trend_agent.tasks.translation.warm_translation_cache",
+            "schedule": crontab(minute=0, hour="*/2"),  # Every 2 hours
+            "options": {"queue": "default"},
+        },
     }
 
     # Logging
@@ -133,6 +139,7 @@ app.autodiscover_tasks([
     "trend_agent.tasks.collection",
     "trend_agent.tasks.processing",
     "trend_agent.tasks.scheduler",
+    "trend_agent.tasks.translation",
 ])
 
 

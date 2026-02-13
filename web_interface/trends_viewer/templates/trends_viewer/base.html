@@ -227,6 +227,101 @@
             transform: translateY(0);
             opacity: 1;
         }
+
+        /* Loading Spinner */
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.6s linear infinite;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Skeleton Screen Animations */
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+            border-radius: 4px;
+        }
+
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        .skeleton-title {
+            height: 24px;
+            width: 70%;
+            margin-bottom: 12px;
+        }
+
+        .skeleton-text {
+            height: 16px;
+            width: 100%;
+            margin-bottom: 8px;
+        }
+
+        .skeleton-text:last-child {
+            width: 80%;
+        }
+
+        /* Translation loading overlay */
+        .translation-loading {
+            position: relative;
+        }
+
+        .translation-loading::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .translation-loading-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 10;
+            font-size: 14px;
+            color: #666;
+        }
+
+        /* Fade transition for content */
+        .fade-transition {
+            transition: opacity 0.3s ease;
+        }
+
+        .fade-out {
+            opacity: 0.5;
+        }
+
+        .fade-in {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -298,12 +393,244 @@
     <div id="toast" class="toast"></div>
 
     <script>
+        // Translation Cache Manager - uses localStorage for instant language switching
+        const TranslationCache = {
+            CACHE_DURATION: 24 * 60 * 60 * 1000, // 24 hours in milliseconds
+            CACHE_PREFIX: 'trend_translation_',
+
+            /**
+             * Save translations to localStorage
+             */
+            save: function(lang, translations) {
+                try {
+                    const cacheKey = this.CACHE_PREFIX + lang;
+                    const cacheData = {
+                        translations: translations,
+                        timestamp: Date.now(),
+                        language: lang
+                    };
+                    localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+                    console.log(`Saved ${Object.keys(translations).length} translations for ${lang}`);
+                } catch (e) {
+                    console.warn('Failed to save translations to localStorage:', e);
+                }
+            },
+
+            /**
+             * Get translations from localStorage
+             */
+            get: function(lang) {
+                try {
+                    const cacheKey = this.CACHE_PREFIX + lang;
+                    const cached = localStorage.getItem(cacheKey);
+
+                    if (!cached) {
+                        return null;
+                    }
+
+                    const cacheData = JSON.parse(cached);
+
+                    // Check if cache is expired
+                    const age = Date.now() - cacheData.timestamp;
+                    if (age > this.CACHE_DURATION) {
+                        console.log(`Cache expired for ${lang}`);
+                        localStorage.removeItem(cacheKey);
+                        return null;
+                    }
+
+                    console.log(`Cache hit for ${lang} (age: ${Math.round(age / 1000 / 60)} minutes)`);
+                    return cacheData.translations;
+                } catch (e) {
+                    console.warn('Failed to read translations from localStorage:', e);
+                    return null;
+                }
+            },
+
+            /**
+             * Clear all translation caches
+             */
+            clear: function() {
+                try {
+                    const keys = Object.keys(localStorage);
+                    keys.forEach(key => {
+                        if (key.startsWith(this.CACHE_PREFIX)) {
+                            localStorage.removeItem(key);
+                        }
+                    });
+                    console.log('Cleared all translation caches');
+                } catch (e) {
+                    console.warn('Failed to clear translation caches:', e);
+                }
+            }
+        };
+
+        /**
+         * Change language with instant switching using cached translations
+         */
         function changeLanguage(selectedLang) {
-            // Simply add ?lang= parameter and redirect
-            // Middleware will save to session and cookie automatically
-            const currentUrl = new URL(window.location.href);
-            currentUrl.searchParams.set('lang', selectedLang);
-            window.location.href = currentUrl.toString();
+            const currentLang = document.getElementById('language-select').value;
+
+            // If selecting English or same language, just redirect
+            if (selectedLang === 'en' || selectedLang === currentLang) {
+                const currentUrl = new URL(window.location.href);
+                currentUrl.searchParams.set('lang', selectedLang);
+                window.location.href = currentUrl.toString();
+                return;
+            }
+
+            // Check if we have cached translations
+            const cachedTranslations = TranslationCache.get(selectedLang);
+
+            if (cachedTranslations && Object.keys(cachedTranslations).length > 0) {
+                // Apply translations instantly from cache
+                console.log('Applying cached translations...');
+                applyTranslations(cachedTranslations, selectedLang);
+                showToast(`✓ Switched to ${getLanguageName(selectedLang)} (cached)`);
+            } else {
+                // Fetch translations from server
+                console.log('Fetching translations from server...');
+                showToast(`Loading ${getLanguageName(selectedLang)} translations...`, 30000);
+                fetchAndApplyTranslations(selectedLang);
+            }
+        }
+
+        /**
+         * Fetch translations from API and apply them
+         */
+        function fetchAndApplyTranslations(targetLang) {
+            // Collect all trend IDs from the current page
+            const trendElements = document.querySelectorAll('[data-trend-id]');
+            const trendIds = Array.from(trendElements).map(el => el.dataset.trendId);
+
+            if (trendIds.length === 0) {
+                // No trends on page, just reload
+                const currentUrl = new URL(window.location.href);
+                currentUrl.searchParams.set('lang', targetLang);
+                window.location.href = currentUrl.toString();
+                return;
+            }
+
+            // Show loading state on all trend cards
+            trendElements.forEach(el => {
+                el.classList.add('translation-loading', 'fade-out');
+            });
+
+            // Show loading spinner in language selector
+            const langSelect = document.getElementById('language-select');
+            const originalDisplay = langSelect.style.display;
+            langSelect.disabled = true;
+
+            // Call API to get translations
+            const apiUrl = '{% url "trends_viewer:get_trend_translations" %}';
+            const url = `${apiUrl}?trend_ids=${trendIds.join(',')}&lang=${targetLang}`;
+
+            const startTime = Date.now();
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    const duration = Date.now() - startTime;
+
+                    if (data.status === 'success') {
+                        // Save to cache
+                        TranslationCache.save(targetLang, data.translations);
+
+                        // Apply translations
+                        applyTranslations(data.translations, targetLang);
+
+                        // Remove loading states
+                        trendElements.forEach(el => {
+                            el.classList.remove('translation-loading', 'fade-out');
+                            el.classList.add('fade-in');
+                        });
+
+                        // Re-enable language selector
+                        langSelect.disabled = false;
+
+                        // Update URL without reload
+                        const currentUrl = new URL(window.location.href);
+                        currentUrl.searchParams.set('lang', targetLang);
+                        window.history.pushState({}, '', currentUrl.toString());
+
+                        showToast(`✓ Switched to ${getLanguageName(targetLang)} (${duration}ms)`);
+                    } else {
+                        console.error('Translation API error:', data.message);
+                        showToast('⚠ Translation failed, reloading page...');
+                        // Fallback to page reload
+                        setTimeout(() => {
+                            const currentUrl = new URL(window.location.href);
+                            currentUrl.searchParams.set('lang', targetLang);
+                            window.location.href = currentUrl.toString();
+                        }, 1000);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching translations:', error);
+
+                    // Remove loading states
+                    trendElements.forEach(el => {
+                        el.classList.remove('translation-loading', 'fade-out');
+                    });
+                    langSelect.disabled = false;
+
+                    showToast('⚠ Network error, reloading page...');
+                    // Fallback to page reload
+                    setTimeout(() => {
+                        const currentUrl = new URL(window.location.href);
+                        currentUrl.searchParams.set('lang', targetLang);
+                        window.location.href = currentUrl.toString();
+                    }, 1000);
+                });
+        }
+
+        /**
+         * Apply translations to the current page DOM
+         */
+        function applyTranslations(translations, targetLang) {
+            for (const trendId in translations) {
+                const translation = translations[trendId];
+                const trendElement = document.querySelector(`[data-trend-id="${trendId}"]`);
+
+                if (trendElement) {
+                    // Update title
+                    const titleElement = trendElement.querySelector('[data-field="title"]');
+                    if (titleElement && translation.title) {
+                        titleElement.textContent = translation.title;
+                    }
+
+                    // Update summary
+                    const summaryElement = trendElement.querySelector('[data-field="summary"]');
+                    if (summaryElement && translation.summary) {
+                        summaryElement.textContent = translation.summary;
+                    }
+
+                    // Update full summary
+                    const fullSummaryElement = trendElement.querySelector('[data-field="full_summary"]');
+                    if (fullSummaryElement && translation.full_summary) {
+                        fullSummaryElement.textContent = translation.full_summary;
+                    }
+                }
+            }
+
+            // Update language selector
+            document.getElementById('language-select').value = targetLang;
+        }
+
+        /**
+         * Get human-readable language name
+         */
+        function getLanguageName(lang) {
+            const languageNames = {
+                'en': 'English',
+                'zh': 'Chinese',
+                'es': 'Spanish',
+                'fr': 'French',
+                'de': 'German',
+                'ja': 'Japanese',
+                'ko': 'Korean',
+                'ru': 'Russian'
+            };
+            return languageNames[lang] || lang;
         }
 
         function showToast(message, duration = 3000) {
@@ -365,6 +692,57 @@
                 document.getElementById('provider-toggle').checked = !isAI;
             });
         }
+
+        // Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js')
+                    .then(registration => {
+                        console.log('[App] ServiceWorker registered:', registration.scope);
+
+                        // Check for updates every hour
+                        setInterval(() => {
+                            registration.update();
+                        }, 3600000);
+
+                        // Listen for updates
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    // New version available
+                                    showToast('🔄 New version available! Refresh to update.', 5000);
+                                }
+                            });
+                        });
+                    })
+                    .catch(error => {
+                        console.warn('[App] ServiceWorker registration failed:', error);
+                    });
+
+                // Listen for service worker messages
+                navigator.serviceWorker.addEventListener('message', event => {
+                    console.log('[App] Message from ServiceWorker:', event.data);
+
+                    if (event.data.type === 'CACHE_UPDATED') {
+                        console.log('[App] Cache updated');
+                    }
+                });
+            });
+        } else {
+            console.warn('[App] ServiceWorker not supported');
+        }
+
+        // Install prompt for PWA
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevent the mini-infobar from appearing
+            e.preventDefault();
+            // Stash the event so it can be triggered later
+            deferredPrompt = e;
+            console.log('[App] PWA install prompt available');
+        });
     </script>
 </body>
 </html>

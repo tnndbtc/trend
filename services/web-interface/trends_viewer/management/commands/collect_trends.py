@@ -244,7 +244,7 @@ class Command(BaseCommand):
 
         # Step 8: Batch summarize topics (much more efficient!)
         self.stdout.write('🤖 Batch summarizing topics...')
-        BATCH_SIZE = 15  # Process 15 topics per API call
+        BATCH_SIZE = 5  # Process 5 topics per API call (reduced for full-length rewrites)
         total_batches = (len(selected_topics) + BATCH_SIZE - 1) // BATCH_SIZE
 
         for batch_idx in range(0, len(selected_topics), BATCH_SIZE):

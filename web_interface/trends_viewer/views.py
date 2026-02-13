@@ -6,12 +6,33 @@ from django.views.decorators.csrf import csrf_exempt
 from .models import CollectionRun, CollectedTopic, TrendCluster
 import asyncio
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
 
 # Translation helper function
 _translation_manager = None
+# Thread-local storage for event loops (to avoid creating new loops for each translation)
+_thread_local = threading.local()
+
+
+def get_or_create_event_loop():
+    """
+    Get or create an event loop for the current thread.
+
+    This reuses event loops within the same thread instead of creating
+    a new one for each translation, significantly reducing overhead.
+
+    Returns:
+        asyncio event loop instance
+    """
+    if not hasattr(_thread_local, 'loop') or _thread_local.loop is None or _thread_local.loop.is_closed():
+        _thread_local.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(_thread_local.loop)
+        logger.debug("Created new event loop for thread")
+    return _thread_local.loop
+
 
 def get_translation_manager():
     """Get or create translation manager instance (lazy initialization)."""
@@ -52,12 +73,12 @@ def get_preferred_provider(session):
     Returns:
         Preferred provider name or None
     """
-    provider_pref = session.get('translation_provider', 'free')
+    provider_pref = session.get('translation_provider', 'ai')  # Default to AI (DeepL)
 
     # Map preference to provider name
     if provider_pref == 'ai':
-        # Try OpenAI first, then DeepL, then LibreTranslate as fallback
-        return 'openai'  # TranslationManager will handle fallback
+        # Use DeepL for best quality, fallback to OpenAI, then LibreTranslate
+        return 'deepl'  # TranslationManager will handle fallback
     else:
         # Use free provider (LibreTranslate)
         return 'libretranslate'
@@ -91,25 +112,90 @@ def translate_text_sync(text, target_lang='zh', session=None):
         normalized_lang = normalize_lang_code(target_lang)
         logger.info(f"Translating text to {normalized_lang} (original: {target_lang}, provider: {preferred_provider})")
 
-        # Run async translation in sync context
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            translated = loop.run_until_complete(
-                manager.translate(
-                    text,
-                    normalized_lang,
-                    source_language='en',
-                    preferred_provider=preferred_provider
-                )
+        # Run async translation in sync context using reusable event loop
+        loop = get_or_create_event_loop()
+        translated = loop.run_until_complete(
+            manager.translate(
+                text,
+                normalized_lang,
+                source_language='en',
+                preferred_provider=preferred_provider
             )
-            logger.info(f"Translation successful: '{text[:50]}...' -> '{translated[:50]}...'")
-            return translated
-        finally:
-            loop.close()
+        )
+        logger.info(f"Translation successful: '{text[:50]}...' -> '{translated[:50]}...'")
+        return translated
     except Exception as e:
         logger.error(f"Translation error for '{text[:50]}...': {e}")
         return text  # Return original text on error
+
+
+def translate_texts_batch(texts, target_lang='zh', session=None):
+    """
+    Batch translate multiple texts to target language.
+
+    This is much more efficient than translating texts one by one,
+    as it makes a single API call instead of multiple sequential calls.
+
+    Args:
+        texts: List of text strings to translate
+        target_lang: Target language code (default: 'zh' for Chinese)
+        session: Django session (optional, for provider preference)
+
+    Returns:
+        List of translated texts in the same order as input
+    """
+    if not texts or target_lang == 'en':
+        return texts
+
+    # Filter out None/empty texts and track their original positions
+    text_map = {}  # position -> original text
+    texts_to_translate = []
+    for i, text in enumerate(texts):
+        if text:
+            text_map[i] = text
+            texts_to_translate.append(text)
+
+    if not texts_to_translate:
+        return texts
+
+    try:
+        manager = get_translation_manager()
+        if not manager:
+            logger.warning("Translation manager not available")
+            return texts
+
+        # Get preferred provider from session
+        preferred_provider = get_preferred_provider(session) if session else None
+
+        # Normalize language code
+        normalized_lang = normalize_lang_code(target_lang)
+        logger.info(f"Batch translating {len(texts_to_translate)} texts to {normalized_lang}")
+
+        # Run async batch translation using reusable event loop
+        loop = get_or_create_event_loop()
+        translations = loop.run_until_complete(
+            manager.translate_batch(
+                texts=texts_to_translate,
+                target_language=normalized_lang,
+                source_language='en',
+                preferred_provider=preferred_provider
+            )
+        )
+
+        # Map translations back to original positions
+        result = list(texts)  # Copy original list
+        translation_idx = 0
+        for i in text_map:
+            if translation_idx < len(translations):
+                result[i] = translations[translation_idx]
+                translation_idx += 1
+
+        logger.info(f"Batch translation successful: {len(translations)} texts translated")
+        return result
+
+    except Exception as e:
+        logger.error(f"Batch translation error: {e}")
+        return texts  # Return original texts on error
 
 
 @require_POST
@@ -149,6 +235,84 @@ def set_translation_provider(request):
 
     except Exception as e:
         logger.error(f"Error setting translation provider: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+
+def get_trend_translations(request):
+    """
+    AJAX endpoint to get translations for trends.
+
+    Accepts GET parameters:
+        - trend_ids: Comma-separated list of trend IDs
+        - lang: Target language code (e.g., 'zh', 'es', 'fr')
+
+    Returns:
+        JsonResponse with translations for each trend
+    """
+    try:
+        # Get parameters
+        trend_ids_str = request.GET.get('trend_ids', '')
+        target_lang = request.GET.get('lang', 'en')
+
+        if not trend_ids_str:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'trend_ids parameter is required'
+            }, status=400)
+
+        # Parse trend IDs
+        try:
+            trend_ids = [int(id.strip()) for id in trend_ids_str.split(',') if id.strip()]
+        except ValueError:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Invalid trend_ids format'
+            }, status=400)
+
+        if not trend_ids:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'No valid trend IDs provided'
+            }, status=400)
+
+        # Fetch trends
+        trends = list(TrendCluster.objects.filter(id__in=trend_ids))
+
+        if not trends:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'No trends found'
+            }, status=404)
+
+        # Translate trends (batch translation for performance)
+        if target_lang != 'en':
+            logger.info(f"API: Batch translating {len(trends)} trends to {target_lang}")
+            translate_trends_batch(trends, target_lang, request.session)
+
+        # Build response
+        translations = {}
+        for trend in trends:
+            translations[str(trend.id)] = {
+                'id': trend.id,
+                'title': trend.title,
+                'summary': trend.summary,
+                'full_summary': trend.full_summary,
+                'is_translated': getattr(trend, 'is_translated', False),
+                'translation_lang': getattr(trend, 'translation_lang', 'en')
+            }
+
+        return JsonResponse({
+            'status': 'success',
+            'language': target_lang,
+            'count': len(translations),
+            'translations': translations
+        })
+
+    except Exception as e:
+        logger.error(f"Error in get_trend_translations: {e}")
         return JsonResponse({
             'status': 'error',
             'message': str(e)
@@ -221,6 +385,108 @@ def translate_topic(topic, target_lang='zh', session=None):
     return topic
 
 
+def translate_trends_batch(trends, target_lang='zh', session=None):
+    """
+    Batch translate multiple TrendCluster objects to target language.
+
+    This is significantly faster than translating trends one by one.
+
+    Args:
+        trends: List of TrendCluster instances
+        target_lang: Target language code
+        session: Django session (optional, for provider preference)
+
+    Returns:
+        List of modified trend objects with translated fields
+    """
+    if target_lang == 'en' or not trends:
+        return trends
+
+    try:
+        # Collect all texts to translate
+        texts_to_translate = []
+        for trend in trends:
+            texts_to_translate.append(trend.title)
+            texts_to_translate.append(trend.summary or '')
+            texts_to_translate.append(trend.full_summary or '')
+
+        # Batch translate all texts at once
+        translations = translate_texts_batch(texts_to_translate, target_lang, session)
+
+        # Map translations back to trends
+        idx = 0
+        for trend in trends:
+            trend.title = translations[idx] or trend.title
+            trend.summary = translations[idx + 1] or trend.summary
+            trend.full_summary = translations[idx + 2] or trend.full_summary
+            idx += 3
+
+            # Mark as translated
+            trend.is_translated = True
+            trend.translation_lang = target_lang
+
+        logger.info(f"Batch translated {len(trends)} trends successfully")
+        return trends
+
+    except Exception as e:
+        logger.error(f"Error batch translating trends: {e}")
+        # Mark all as not translated on error
+        for trend in trends:
+            trend.is_translated = False
+        return trends
+
+
+def translate_topics_batch(topics, target_lang='zh', session=None):
+    """
+    Batch translate multiple CollectedTopic objects to target language.
+
+    This is significantly faster than translating topics one by one.
+
+    Args:
+        topics: List of CollectedTopic instances
+        target_lang: Target language code
+        session: Django session (optional, for provider preference)
+
+    Returns:
+        List of modified topic objects with translated fields
+    """
+    if target_lang == 'en' or not topics:
+        return topics
+
+    try:
+        # Collect all texts to translate
+        texts_to_translate = []
+        for topic in topics:
+            texts_to_translate.append(topic.title)
+            texts_to_translate.append(topic.description or '')
+            texts_to_translate.append(topic.title_summary or '')
+
+        # Batch translate all texts at once
+        translations = translate_texts_batch(texts_to_translate, target_lang, session)
+
+        # Map translations back to topics
+        idx = 0
+        for topic in topics:
+            topic.title = translations[idx] or topic.title
+            topic.description = translations[idx + 1] or topic.description
+            topic.title_summary = translations[idx + 2] or topic.title_summary
+            idx += 3
+
+            # Mark as translated
+            topic.is_translated = True
+            topic.translation_lang = target_lang
+
+        logger.info(f"Batch translated {len(topics)} topics successfully")
+        return topics
+
+    except Exception as e:
+        logger.error(f"Error batch translating topics: {e}")
+        # Mark all as not translated on error
+        for topic in topics:
+            topic.is_translated = False
+        return topics
+
+
 def dashboard(request):
     """Dashboard view showing overview of recent collection runs."""
     recent_runs = CollectionRun.objects.all()[:5]
@@ -238,15 +504,14 @@ def dashboard(request):
     stats['current_lang'] = target_lang
 
     if latest_run:
-        latest_trends = TrendCluster.objects.filter(
+        latest_trends = list(TrendCluster.objects.filter(
             collection_run=latest_run
-        ).order_by('rank')[:10]
+        ).order_by('rank')[:10])
 
-        # Translate trends if requested
-        if target_lang != 'en':
-            logger.info(f"Translating {len(latest_trends)} dashboard trends to {target_lang}")
-            for trend in latest_trends:
-                translate_trend(trend, target_lang, request.session)
+        # Translate trends if requested (using batch translation for performance)
+        if target_lang != 'en' and latest_trends:
+            logger.info(f"Batch translating {len(latest_trends)} dashboard trends to {target_lang}")
+            translate_trends_batch(latest_trends, target_lang, request.session)
 
         stats['latest_trends'] = latest_trends
 
@@ -283,11 +548,14 @@ class TrendListView(ListView):
         target_lang = getattr(self.request, 'LANGUAGE_CODE', 'en')
         context['current_lang'] = target_lang
 
-        # Translate trends if requested
+        # Translate trends if requested (using batch translation for performance)
         if target_lang != 'en' and 'object_list' in context:
-            logger.info(f"Translating {len(context['object_list'])} trends to {target_lang}")
-            for trend in context['object_list']:
-                translate_trend(trend, target_lang, self.request.session)
+            trends_list = list(context['object_list'])
+            if trends_list:
+                logger.info(f"Batch translating {len(trends_list)} trends to {target_lang}")
+                translate_trends_batch(trends_list, target_lang, self.request.session)
+                # Update context with translated trends
+                context['object_list'] = trends_list
 
         return context
 
@@ -300,20 +568,22 @@ class TrendDetailView(DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['topics'] = self.object.topics.all()
+        topics_list = list(self.object.topics.all())
+        context['topics'] = topics_list
 
         # Language support (from middleware)
         target_lang = getattr(self.request, 'LANGUAGE_CODE', 'en')
         context['current_lang'] = target_lang
 
-        # Translate trend and topics if requested
+        # Translate trend and topics if requested (using batch translation for performance)
         if target_lang != 'en':
-            logger.info(f"Translating trend detail to {target_lang}")
-            translate_trend(self.object, target_lang, self.request.session)
+            logger.info(f"Batch translating trend detail to {target_lang}")
+            # Translate the single trend
+            translate_trends_batch([self.object], target_lang, self.request.session)
 
-            # Translate all topics in this trend
-            for topic in context['topics']:
-                translate_topic(topic, target_lang, self.request.session)
+            # Batch translate all topics in this trend
+            if topics_list:
+                translate_topics_batch(topics_list, target_lang, self.request.session)
 
         return context
 

@@ -14,18 +14,18 @@
 {% if trends %}
 <div style="display: flex; flex-direction: column; gap: 1.5rem;">
     {% for trend in trends %}
-    <div class="card">
+    <div class="card" data-trend-id="{{ trend.id }}">
         <div style="display: flex; align-items: start; gap: 1rem;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; min-width: 60px; height: 60px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold;">
                 #{{ trend.rank }}
             </div>
             <div style="flex: 1;">
                 <h3 style="margin-bottom: 0.75rem;">
-                    <a href="{% url 'trends_viewer:trend_detail' trend.pk %}" style="color: #2c3e50; text-decoration: none;">
+                    <a href="{% url 'trends_viewer:trend_detail' trend.pk %}" style="color: #2c3e50; text-decoration: none;" data-field="title">
                         {{ trend.title }}
                     </a>
                 </h3>
-                <p style="color: #666; line-height: 1.6; margin-bottom: 1rem;">{{ trend.summary }}</p>
+                <p style="color: #666; line-height: 1.6; margin-bottom: 1rem;" data-field="summary">{{ trend.summary }}</p>
                 <div style="display: flex; gap: 1rem; align-items: center; font-size: 0.875rem; color: #666;">
                     <span>📊 Score: {{ trend.score|floatformat:0 }}</span>
                     <span>📰 {{ trend.get_topic_count }} topic{{ trend.get_topic_count|pluralize }}</span>

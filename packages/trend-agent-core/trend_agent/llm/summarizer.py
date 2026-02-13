@@ -26,42 +26,56 @@ async def summarize_topics_batch(topics):
     prompt = f"""You are an AI agent that processes trending posts from social media and news sources.
 Process these {len(topics)} topics and return a JSON array with summaries.
 
+**CRITICAL: ALL OUTPUT MUST BE IN ENGLISH regardless of input language.**
+If input is in Chinese, Japanese, Korean, or any non-English language, translate to English while preserving meaning and nuance.
+
 Input topics:
 {json.dumps(topics_data, indent=2)}
 
 For EACH topic, generate:
-1. title_summary: A concise summary using around 15 words, preserving the core meaning
-2. full_summary: MUST start with "[URL] Original Title: " then provide a brief content summary
+1. title_summary: A concise ENGLISH summary using around 15 words, preserving the core meaning
+2. full_summary: MUST start with "[URL] Original Title: " then provide a FULL-LENGTH ENGLISH REWRITE of the content
 
-CRITICAL FORMAT for full_summary:
-"[{{url}}] {{original_title}}: Brief summary of the content here"
+CRITICAL REQUIREMENTS for full_summary:
+- START with "[{{url}}] {{original_title}}: " format (translate title to English if needed)
+- Then provide a comprehensive ENGLISH rewrite that is approximately THE SAME LENGTH as the original content
+- This is NOT a brief summary - rewrite the entire content in a clear, engaging way
+- Preserve all key points, details, examples, and nuances from the original
+- Target: ~100% of original content length (full rewrite, not condensed)
+- **TRANSLATE non-English content to English**
 
 Example:
 {{
   "title_summary": "New AI model achieves breakthrough in reasoning tasks",
-  "full_summary": "[https://example.com/post] Original Post Title: Researchers announce a new AI model that shows significant improvements in logical reasoning and problem-solving capabilities."
+  "full_summary": "[https://example.com/post] Original Post Title: Researchers at XYZ Lab announce a groundbreaking new AI model... [continues with full-length rewrite of entire content]",
+  "language": "en"
 }}
 
 Output MUST be a JSON array with exactly {len(topics)} objects:
 [
   {{
     "title_summary": "...",
-    "full_summary": "[URL] Title: ..."
+    "full_summary": "[URL] Title: [Full-length rewrite here...]",
+    "language": "en"
   }},
   ...
 ]
 
 Important:
-- Generate summaries for ALL {len(topics)} topics
-- Preserve the original language where appropriate
+- Generate full-length rewrites for ALL {len(topics)} topics
+- **TRANSLATE all content to ENGLISH** (this is critical for ranking and clustering)
 - Keep title_summary around 15 words
-- ALWAYS include the [URL] and original title in full_summary
-- Do not invent facts; summarize only provided content
+- ALWAYS include the [URL] and original title prefix in full_summary
+- Full_summary should be approximately the same length as the original content
+- Do not invent facts; rewrite only the provided content
+- If original content is short, the rewrite can be proportionally short
+- Set language field to "en" for all outputs
 """
 
     try:
-        # Use higher token limit for batch processing (approx 100 tokens per topic)
-        max_tokens = min(4000, len(topics) * 150)
+        # Use much higher token limit for full-length rewrites (approx 1500-2000 tokens per topic)
+        # Adjust based on batch size to avoid hitting API limits
+        max_tokens = min(8000, len(topics) * 1800)
         result = await call_llm_json(prompt, max_tokens=max_tokens)
 
         # Ensure result is an array
@@ -92,31 +106,39 @@ async def summarize_single_topic(topic):
     prompt = f"""You are an AI agent that processes trending posts from social media and news sources.
 Never stop mid-output unless you reach a hard token limit.
 
+**CRITICAL: ALL OUTPUT MUST BE IN ENGLISH regardless of input language.**
+If input is in Chinese, Japanese, Korean, or any non-English language, translate to English while preserving meaning and nuance.
+
 Input:
 - title: {topic.title}
 - url: {topic.url}
 - content: {topic.content if topic.content else topic.description if topic.description else "(no content available)"}
-- language: {topic.language}
+- original_language: {topic.language}
 
 Tasks:
-1. Generate a concise **title summary** using around 15 words, preserving the core meaning.
-2. Summarize the post content in a **brief summary**, starting with the original link and original title.
-   Example output start:
-   "[{topic.url}] {topic.title}: ..."
-3. Preserve the original language for content unless specified otherwise.
-4. Ensure clarity, engagement, and factual correctness.
-5. Output the results in JSON format exactly as follows:
+1. Generate a concise **ENGLISH title summary** using around 15 words, preserving the core meaning.
+2. Generate a **full-length ENGLISH rewrite** of the post content, starting with the original link and translated title.
+   - START with: "[{topic.url}] {topic.title}: " (translate title to English if needed)
+   - Then provide a comprehensive ENGLISH rewrite that is approximately THE SAME LENGTH as the original content
+   - This is NOT a brief summary - rewrite the entire content in a clear, engaging way
+   - Preserve all key points, details, examples, and nuances from the original
+   - Target: ~100% of original content length (full rewrite, not condensed)
+   - **TRANSLATE non-English content to English**
+3. Ensure clarity, engagement, and factual correctness.
+4. Output the results in JSON format exactly as follows:
 
 {{
-  "title_summary": "Concise 15-word summary of the original title",
-  "full_summary": "[{topic.url}] {topic.title}: Brief summary of the post content",
-  "language": "ISO language code of the output"
+  "title_summary": "Concise 15-word ENGLISH summary of the original title",
+  "full_summary": "[{topic.url}] Translated Title: Full-length ENGLISH rewrite of the entire post content...",
+  "language": "en"
 }}
 
 Notes:
-- If content is missing, generate the summary from the title and context alone.
+- If content is missing, generate from the title and context alone (proportionally shorter).
 - Keep the title summary close to 15 words, but only if it does not break clarity.
-- Do not invent facts; summarize only the provided content or reliable context.
+- Full_summary should match the length of the original content (not abbreviated).
+- Do not invent facts; rewrite only the provided content or reliable context.
+- **Always output in English** - this is critical for ranking and clustering.
 """
 
     return await call_llm_json(prompt)

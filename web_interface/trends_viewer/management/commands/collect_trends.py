@@ -314,7 +314,7 @@ class Command(BaseCommand):
 
         # Step 8: Batch summarize topics (much more efficient!)
         self.stdout.write('🤖 Batch summarizing topics...')
-        BATCH_SIZE = 15  # Process 15 topics per API call
+        BATCH_SIZE = 5  # Process 5 topics per API call (reduced for full-length rewrites)
         total_batches = (len(selected_topics) + BATCH_SIZE - 1) // BATCH_SIZE
 
         for batch_idx in range(0, len(selected_topics), BATCH_SIZE):
@@ -359,6 +359,71 @@ class Command(BaseCommand):
                         topic.full_summary = f"[{topic.url}] {topic.title}"
 
         self.stdout.write(f'✅ Batch summarization complete for {len(selected_topics)} topics')
+
+        # Step 8.5: Ensure all summaries are in English (backup translation)
+        self.stdout.write('🌐 Ensuring all summaries are in English...')
+        non_english_count = 0
+        translated_count = 0
+
+        # Import translation manager
+        try:
+            from trends_viewer.views import get_translation_manager
+            translation_manager = get_translation_manager()
+        except Exception as e:
+            self.stdout.write(f'   ⚠️  Translation manager not available: {e}')
+            translation_manager = None
+
+        for topic in selected_topics:
+            # Check if topic language is not English or if summaries contain non-ASCII (likely non-English)
+            is_non_english = topic.language != 'en'
+
+            # Also check if the title_summary or full_summary contains non-ASCII characters
+            # This catches cases where the LLM didn't translate despite instructions
+            has_non_ascii_summary = any(ord(char) > 127 for char in (topic.title_summary or ''))
+            has_non_ascii_full = any(ord(char) > 127 for char in (topic.full_summary or ''))
+
+            if is_non_english or has_non_ascii_summary or has_non_ascii_full:
+                non_english_count += 1
+
+                # Try to translate if translation manager is available
+                if translation_manager:
+                    try:
+                        # Translate title_summary if it has non-English content
+                        if has_non_ascii_summary or is_non_english:
+                            translated_title = await translation_manager.translate(
+                                topic.title_summary or topic.title,
+                                target_language='en',
+                                source_language=topic.language if topic.language != 'en' else 'auto'
+                            )
+                            if translated_title:
+                                topic.title_summary = translated_title
+                                translated_count += 1
+
+                        # Translate full_summary if it has non-English content
+                        if has_non_ascii_full or is_non_english:
+                            translated_full = await translation_manager.translate(
+                                topic.full_summary or topic.description or '',
+                                target_language='en',
+                                source_language=topic.language if topic.language != 'en' else 'auto'
+                            )
+                            if translated_full:
+                                topic.full_summary = translated_full
+
+                        # Update language to 'en' since we've translated
+                        topic.language = 'en'
+
+                    except Exception as e:
+                        self.stdout.write(f'   ⚠️  Translation failed for topic: {str(e)}')
+                        # Keep original summaries if translation fails
+                else:
+                    self.stdout.write(f'   ℹ️  Skipping translation (manager unavailable), relying on LLM translation')
+
+        if non_english_count > 0:
+            self.stdout.write(f'   Found {non_english_count} non-English topics')
+            if translated_count > 0:
+                self.stdout.write(f'   ✅ Translated {translated_count} summaries to English via backup translation')
+            else:
+                self.stdout.write(f'   ℹ️  Relying on LLM translation (no backup translation needed)')
 
         # Step 9: Save topics to database
         self.stdout.write('💾 Saving topics to database...')

@@ -31,37 +31,44 @@ Input topics:
 
 For EACH topic, generate:
 1. title_summary: A concise summary using around 15 words, preserving the core meaning
-2. full_summary: MUST start with "[URL] Original Title: " then provide a brief content summary
+2. full_summary: MUST start with "[URL] Original Title: " then provide a FULL-LENGTH REWRITE of the content
 
-CRITICAL FORMAT for full_summary:
-"[{{url}}] {{original_title}}: Brief summary of the content here"
+CRITICAL REQUIREMENTS for full_summary:
+- START with "[{{url}}] {{original_title}}: " format
+- Then provide a comprehensive rewrite that is approximately THE SAME LENGTH as the original content
+- This is NOT a brief summary - rewrite the entire content in a clear, engaging way
+- Preserve all key points, details, examples, and nuances from the original
+- Target: ~100% of original content length (full rewrite, not condensed)
 
 Example:
 {{
   "title_summary": "New AI model achieves breakthrough in reasoning tasks",
-  "full_summary": "[https://example.com/post] Original Post Title: Researchers announce a new AI model that shows significant improvements in logical reasoning and problem-solving capabilities."
+  "full_summary": "[https://example.com/post] Original Post Title: Researchers at XYZ Lab announce a groundbreaking new AI model... [continues with full-length rewrite of entire content]"
 }}
 
 Output MUST be a JSON array with exactly {len(topics)} objects:
 [
   {{
     "title_summary": "...",
-    "full_summary": "[URL] Title: ..."
+    "full_summary": "[URL] Title: [Full-length rewrite here...]"
   }},
   ...
 ]
 
 Important:
-- Generate summaries for ALL {len(topics)} topics
+- Generate full-length rewrites for ALL {len(topics)} topics
 - Preserve the original language where appropriate
 - Keep title_summary around 15 words
-- ALWAYS include the [URL] and original title in full_summary
-- Do not invent facts; summarize only provided content
+- ALWAYS include the [URL] and original title prefix in full_summary
+- Full_summary should be approximately the same length as the original content
+- Do not invent facts; rewrite only the provided content
+- If original content is short, the rewrite can be proportionally short
 """
 
     try:
-        # Use higher token limit for batch processing (approx 100 tokens per topic)
-        max_tokens = min(4000, len(topics) * 150)
+        # Use much higher token limit for full-length rewrites (approx 1500-2000 tokens per topic)
+        # Adjust based on batch size to avoid hitting API limits
+        max_tokens = min(8000, len(topics) * 1800)
         result = await call_llm_json(prompt, max_tokens=max_tokens)
 
         # Ensure result is an array
@@ -100,23 +107,27 @@ Input:
 
 Tasks:
 1. Generate a concise **title summary** using around 15 words, preserving the core meaning.
-2. Summarize the post content in a **brief summary**, starting with the original link and original title.
-   Example output start:
-   "[{topic.url}] {topic.title}: ..."
+2. Generate a **full-length rewrite** of the post content, starting with the original link and original title.
+   - START with: "[{topic.url}] {topic.title}: "
+   - Then provide a comprehensive rewrite that is approximately THE SAME LENGTH as the original content
+   - This is NOT a brief summary - rewrite the entire content in a clear, engaging way
+   - Preserve all key points, details, examples, and nuances from the original
+   - Target: ~100% of original content length (full rewrite, not condensed)
 3. Preserve the original language for content unless specified otherwise.
 4. Ensure clarity, engagement, and factual correctness.
 5. Output the results in JSON format exactly as follows:
 
 {{
   "title_summary": "Concise 15-word summary of the original title",
-  "full_summary": "[{topic.url}] {topic.title}: Brief summary of the post content",
+  "full_summary": "[{topic.url}] {topic.title}: Full-length rewrite of the entire post content...",
   "language": "ISO language code of the output"
 }}
 
 Notes:
-- If content is missing, generate the summary from the title and context alone.
+- If content is missing, generate from the title and context alone (proportionally shorter).
 - Keep the title summary close to 15 words, but only if it does not break clarity.
-- Do not invent facts; summarize only the provided content or reliable context.
+- Full_summary should match the length of the original content (not abbreviated).
+- Do not invent facts; rewrite only the provided content or reliable context.
 """
 
     return await call_llm_json(prompt)

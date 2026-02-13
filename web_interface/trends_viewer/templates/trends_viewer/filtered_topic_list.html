@@ -58,9 +58,21 @@
                 </h3>
 
                 <!-- Description -->
-                {% if topic.full_summary or topic.description %}
+                {% if topic.full_summary %}
+                <div class="summary-container" data-topic-id="{{ topic.id }}">
+                    <div class="summary-preview" style="color: #666; font-size: 0.9rem; margin-bottom: 0.5rem; line-height: 1.6;">
+                        {{ topic.full_summary|truncatewords:50 }}
+                    </div>
+                    <div class="summary-full" style="display: none; color: #666; font-size: 0.9rem; margin-bottom: 0.5rem; line-height: 1.6;">
+                        {{ topic.full_summary }}
+                    </div>
+                    <button class="expand-btn" onclick="toggleSummary({{ topic.id }})" style="background: none; border: none; color: #3498db; cursor: pointer; font-size: 0.875rem; padding: 0; text-decoration: underline; font-weight: 500;">
+                        Read More ▼
+                    </button>
+                </div>
+                {% elif topic.description %}
                 <p style="color: #666; font-size: 0.9rem; margin-bottom: 0.75rem; line-height: 1.6;">
-                    {{ topic.full_summary|default:topic.description|truncatewords:50 }}
+                    {{ topic.description|truncatewords:50 }}
                 </p>
                 {% endif %}
 
@@ -478,6 +490,26 @@
             noMoreContent.style.display = 'block';
         }
     }
+
+    // Make toggleSummary global so it can be called from inline onclick
+    window.toggleSummary = function(topicId) {
+        const container = document.querySelector(`.summary-container[data-topic-id="${topicId}"]`);
+        const preview = container.querySelector('.summary-preview');
+        const full = container.querySelector('.summary-full');
+        const btn = container.querySelector('.expand-btn');
+
+        if (full.style.display === 'none') {
+            // Expand
+            preview.style.display = 'none';
+            full.style.display = 'block';
+            btn.textContent = 'Show Less ▲';
+        } else {
+            // Collapse
+            preview.style.display = 'block';
+            full.style.display = 'none';
+            btn.textContent = 'Read More ▼';
+        }
+    };
 })();
 </script>
 

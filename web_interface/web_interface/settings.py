@@ -69,10 +69,12 @@ WSGI_APPLICATION = 'web_interface.wsgi.application'
 
 # Database
 # Database is stored in db/ subdirectory which is persisted via Docker volume
+# Temporarily using /tmp for write permissions
+import os
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db' / 'db.sqlite3',
+        'NAME': os.environ.get('DJANGO_DB_PATH', str(BASE_DIR / 'db' / 'db.sqlite3')),
     }
 }
 
