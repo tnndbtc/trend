@@ -728,8 +728,8 @@ MIT License - See LICENSE file for details
 #### When to Update
 
 ✅ **Update Required**:
-- Adding new service to `services/`
-- Adding new package to `packages/`
+- Adding new core component (api/, web_interface/, trend_agent/)
+- Adding new module or major feature
 - Renaming any folder
 - Changing folder purpose
 

@@ -108,60 +108,32 @@ EOF
     echo -e "${COLOR_RESET}"
 
     echo ""
-    echo -e "${COLOR_INFO}=== MICROSERVICES (Independently Deployable) ===${COLOR_RESET}"
+    echo -e "${COLOR_INFO}=== CORE SERVICES (Application Components) ===${COLOR_RESET}"
     echo ""
 
-    echo -e "${COLOR_SUCCESS}📁 services/api/${COLOR_RESET}"
+    echo -e "${COLOR_SUCCESS}📁 api/${COLOR_RESET}"
     echo "   Purpose: FastAPI REST API service"
     echo "   Port: 8000"
     echo "   Features: REST endpoints, GraphQL, WebSocket, API authentication"
     echo "   Quick Start: ./setup.sh dev-api"
-    echo "   Documentation: services/api/README.md"
+    echo "   Documentation: api/README.md"
     echo ""
 
-    echo -e "${COLOR_SUCCESS}📁 services/web-interface/${COLOR_RESET}"
+    echo -e "${COLOR_SUCCESS}📁 web_interface/${COLOR_RESET}"
     echo "   Purpose: Django web UI for browsing trends"
     echo "   Port: 11800"
     echo "   Features: Web dashboard, admin panel, user authentication, user preferences"
     echo "   User Prefs: Session-based + persistent profile filtering (no re-crawling)"
     echo "   Quick Start: ./setup.sh dev-web"
-    echo "   Documentation: services/web-interface/README.md"
+    echo "   Documentation: web_interface/README.md"
     echo "   Preference Docs: docs/USER_PREFERENCES_COMPLETE.md"
     echo ""
 
-    echo -e "${COLOR_SUCCESS}📁 services/crawler/${COLOR_RESET}"
-    echo "   Purpose: Data collection from multiple sources"
-    echo "   Features: Scheduled crawling, Reddit, HackerNews, News RSS"
-    echo "   Quick Start: ./setup.sh dev-crawler"
-    echo "   Documentation: services/crawler/README.md"
-    echo ""
-
-    echo -e "${COLOR_SUCCESS}📁 services/celery-worker/${COLOR_RESET}"
-    echo "   Purpose: Background task processing"
-    echo "   Features: Async tasks, scheduled jobs, queue management"
-    echo "   Quick Start: (Configured in docker-compose.yml)"
-    echo ""
-
-    echo -e "${COLOR_SUCCESS}📁 services/translation-service/${COLOR_RESET}"
-    echo "   Purpose: Multi-language translation pipeline"
-    echo "   Features: Translation providers, caching, cross-language dedup"
-    echo "   Status: ⚠️  In development"
-    echo ""
-
-    echo -e "${COLOR_INFO}=== SHARED LIBRARIES (Used by All Services) ===${COLOR_RESET}"
-    echo ""
-
-    echo -e "${COLOR_SUCCESS}📁 packages/trend-agent-core/${COLOR_RESET}"
-    echo "   Purpose: Core shared library"
-    echo "   Contains: Storage, LLM, Intelligence, Workflow, Agents, Observability"
-    echo "   Install: pip install -e packages/trend-agent-core"
-    echo "   Documentation: packages/trend-agent-core/README.md"
-    echo ""
-
-    echo -e "${COLOR_SUCCESS}📁 packages/trend-agent-collectors/${COLOR_RESET}"
-    echo "   Purpose: Collector plugin library"
-    echo "   Contains: Reddit, HackerNews, Google News, RSS collectors"
-    echo "   Install: pip install -e packages/trend-agent-collectors"
+    echo -e "${COLOR_SUCCESS}📁 trend_agent/${COLOR_RESET}"
+    echo "   Purpose: Core trend intelligence library"
+    echo "   Contains: Storage, LLM, Intelligence, Workflow, Collectors, Observability"
+    echo "   Features: Reddit, HackerNews, Google News collectors, data processing"
+    echo "   Documentation: trend_agent/README.md"
     echo ""
 
     echo -e "${COLOR_INFO}=== INFRASTRUCTURE (Deployment & Config) ===${COLOR_RESET}"
@@ -237,16 +209,16 @@ EOF
     echo -e "${COLOR_HIGHLIGHT}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
-    echo "💡 PARALLEL DEVELOPMENT WORKFLOW"
+    echo "💡 DEVELOPMENT WORKFLOW"
     echo ""
     echo "Open multiple terminals or Claude Code instances:"
     echo ""
     echo "Terminal 1 (Infrastructure): ./setup.sh dev-infra"
-    echo "Terminal 2 (API Service):    cd services/api && edit code"
-    echo "Terminal 3 (Web Interface):  cd services/web-interface && edit code"
-    echo "Terminal 4 (Crawler):        cd services/crawler && edit code"
+    echo "Terminal 2 (API Service):    cd api && edit code"
+    echo "Terminal 3 (Web Interface):  cd web_interface && edit code"
+    echo "Terminal 4 (Core Library):   cd trend_agent && edit code"
     echo ""
-    echo "Each service can be developed, tested, and deployed independently!"
+    echo "All components work together in a unified monolithic architecture!"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo -e "${COLOR_RESET}"
     echo ""
@@ -264,7 +236,7 @@ if [ $# -gt 0 ]; then
             if command -v make &> /dev/null; then
                 make dev-api
             else
-                cd services/api && uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+                cd api && uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
             fi
             ;;
         dev-web)
@@ -272,15 +244,15 @@ if [ $# -gt 0 ]; then
             if command -v make &> /dev/null; then
                 make dev-web
             else
-                cd services/web-interface && python manage.py runserver 11800
+                cd web_interface && python manage.py runserver 11800
             fi
             ;;
         dev-crawler)
-            print_info "Starting crawler service..."
+            print_info "Crawler integrated into web_interface..."
             if command -v make &> /dev/null; then
                 make dev-crawler
             else
-                cd services/crawler && python -m src.main
+                cd web_interface && python manage.py collect_trends
             fi
             ;;
         dev-infra)
