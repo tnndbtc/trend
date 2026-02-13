@@ -113,10 +113,20 @@
             </div>
             <ul>
                 <li><a href="{% url 'trends_viewer:dashboard' %}">Dashboard</a></li>
-                <li><a href="{% url 'trends_viewer:trend_list' %}">Trends</a></li>
-                <li><a href="{% url 'trends_viewer:topic_list' %}">Topics</a></li>
+                <li><a href="{% url 'trends_viewer:trend_list' %}">All Trends</a></li>
+                <li><a href="{% url 'trends_viewer:topic_list' %}">All Topics</a></li>
+                <li><a href="{% url 'trends_viewer:filtered_trends' %}" style="background: rgba(52, 152, 219, 0.2); padding: 0.5rem 1rem; border-radius: 4px;">🔍 My Feed</a></li>
                 <li><a href="{% url 'trends_viewer:run_list' %}">History</a></li>
+                {% if user.is_authenticated %}
+                <li><a href="{% url 'trends_viewer:user_profile' %}">👤 {{ user.username }}</a></li>
+                <li><a href="{% url 'trends_viewer:logout' %}">Logout</a></li>
+                {% else %}
+                <li><a href="{% url 'trends_viewer:login' %}">Login</a></li>
+                <li><a href="{% url 'trends_viewer:register' %}" style="background: #3498db; color: white; padding: 0.5rem 1rem; border-radius: 4px;">Sign Up</a></li>
+                {% endif %}
+                {% if user.is_staff %}
                 <li><a href="/admin/">Admin</a></li>
+                {% endif %}
             </ul>
             <div class="language-selector">
                 <a href="?lang=en" class="lang-btn {% if current_lang == 'en' or not current_lang %}active{% endif %}">

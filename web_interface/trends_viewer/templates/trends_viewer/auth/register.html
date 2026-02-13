@@ -1,0 +1,103 @@
+{% extends 'trends_viewer/base.html' %}
+
+{% block title %}Register - AI Trend Intelligence{% endblock %}
+
+{% block content %}
+<div style="max-width: 500px; margin: 3rem auto;">
+    <div class="card">
+        <h2 style="margin-bottom: 1.5rem; text-align: center;">Create Your Account</h2>
+
+        <p style="text-align: center; color: #666; margin-bottom: 2rem;">
+            Join to save your preferences and access personalized trend feeds across devices.
+        </p>
+
+        <form method="post">
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+            <div style="background: #ffebee; border-left: 4px solid #f44336; padding: 1rem; margin-bottom: 1rem;">
+                {{ form.non_field_errors }}
+            </div>
+            {% endif %}
+
+            {% for field in form %}
+            <div style="margin-bottom: 1.5rem;">
+                <label for="{{ field.id_for_label }}" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #555;">
+                    {{ field.label }}
+                    {% if field.field.required %}<span style="color: #f44336;">*</span>{% endif %}
+                </label>
+
+                {{ field }}
+
+                {% if field.help_text %}
+                <small style="display: block; color: #999; margin-top: 0.25rem; font-size: 0.875rem;">
+                    {{ field.help_text|safe }}
+                </small>
+                {% endif %}
+
+                {% if field.errors %}
+                <div style="color: #f44336; margin-top: 0.5rem; font-size: 0.875rem;">
+                    {{ field.errors }}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 1rem; font-size: 1rem; margin-top: 1rem;">
+                Create Account
+            </button>
+        </form>
+
+        <div style="margin-top: 2rem; text-align: center; padding-top: 1.5rem; border-top: 1px solid #e0e0e0;">
+            <p style="color: #666;">
+                Already have an account?
+                <a href="{% url 'trends_viewer:login' %}" style="color: #3498db; font-weight: 600;">
+                    Log in here
+                </a>
+            </p>
+        </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 2rem; color: #999; font-size: 0.875rem;">
+        <p>
+            By creating an account, you agree to our
+            <a href="#" style="color: #3498db;">Terms of Service</a>
+            and
+            <a href="#" style="color: #3498db;">Privacy Policy</a>
+        </p>
+    </div>
+</div>
+
+<style>
+    .form-input {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 1rem;
+        transition: border-color 0.3s;
+    }
+    .form-input:focus {
+        outline: none;
+        border-color: #3498db;
+        box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    }
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+    .btn-primary {
+        background: #3498db;
+        color: white;
+    }
+    .btn-primary:hover {
+        background: #2980b9;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+</style>
+{% endblock %}

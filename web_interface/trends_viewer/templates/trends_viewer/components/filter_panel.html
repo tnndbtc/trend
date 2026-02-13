@@ -1,0 +1,478 @@
+{% comment %}
+Filter Panel Component - Session-based preference filtering
+
+This component provides a comprehensive filter interface for users to
+specify their interests and filter articles without authentication.
+
+Usage:
+    {% include 'trends_viewer/components/filter_panel.html' %}
+{% endcomment %}
+
+<style>
+    .filter-panel {
+        background: white;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .filter-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #e0e0e0;
+    }
+    .filter-header h3 {
+        margin: 0;
+        color: #2c3e50;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .filter-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .filter-group label {
+        font-weight: 600;
+        color: #555;
+        font-size: 0.9rem;
+    }
+    .filter-group select,
+    .filter-group input {
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        transition: border-color 0.3s;
+    }
+    .filter-group select:focus,
+    .filter-group input:focus {
+        outline: none;
+        border-color: #3498db;
+        box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    }
+    .filter-group select[multiple] {
+        min-height: 120px;
+    }
+    .filter-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: flex-end;
+        padding-top: 1rem;
+        border-top: 1px solid #e0e0e0;
+    }
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    .btn-primary {
+        background: #3498db;
+        color: white;
+    }
+    .btn-primary:hover {
+        background: #2980b9;
+    }
+    .btn-secondary {
+        background: #95a5a6;
+        color: white;
+    }
+    .btn-secondary:hover {
+        background: #7f8c8d;
+    }
+    .btn-outline {
+        background: white;
+        color: #3498db;
+        border: 2px solid #3498db;
+    }
+    .btn-outline:hover {
+        background: #3498db;
+        color: white;
+    }
+    .filter-stats {
+        background: #ecf0f1;
+        padding: 1rem;
+        border-radius: 4px;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+        color: #555;
+    }
+    .filter-stats strong {
+        color: #2c3e50;
+    }
+    .filter-badge {
+        display: inline-block;
+        background: #3498db;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+    .help-text {
+        font-size: 0.8rem;
+        color: #7f8c8d;
+        font-style: italic;
+        margin-top: 0.25rem;
+    }
+    .toggle-filters {
+        background: #ecf0f1;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        color: #555;
+    }
+    .toggle-filters:hover {
+        background: #bdc3c7;
+    }
+    .collapsible-content {
+        transition: max-height 0.3s ease-out;
+        overflow: hidden;
+    }
+    .collapsible-content.collapsed {
+        max-height: 0;
+    }
+    .collapsible-content.expanded {
+        max-height: 2000px;
+    }
+</style>
+
+<div class="filter-panel" id="filterPanel">
+    <div class="filter-header">
+        <h3>
+            <span>🔍</span>
+            Filter Your Interests
+            {% if filter_stats.is_filtered %}
+                <span class="filter-badge">{{ filter_stats.active_count }} active</span>
+            {% endif %}
+        </h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            {% if user.is_authenticated %}
+            <select id="profileSelector" onchange="loadProfile(this.value)" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; background: white;">
+                <option value="">Load Saved Profile...</option>
+                <!-- Profiles will be loaded via AJAX -->
+            </select>
+            <button type="button" class="toggle-filters" onclick="quickSaveProfile()" title="Save current filters as profile">
+                💾
+            </button>
+            {% endif %}
+            <button type="button" class="toggle-filters" onclick="toggleFilters()">
+                <span id="toggleIcon">▼</span> Toggle
+            </button>
+        </div>
+    </div>
+
+    {% if filter_stats.is_filtered %}
+    <div class="filter-stats">
+        <strong>Active Filters:</strong> {{ filter_stats.active_filters|join:", " }}
+    </div>
+    {% endif %}
+
+    <div id="filterContent" class="collapsible-content expanded">
+        <form method="get" action="" id="filterForm">
+            <input type="hidden" name="apply_filters" value="1">
+
+            <div class="filter-grid">
+                <!-- Source Selection -->
+                <div class="filter-group">
+                    <label for="sources">📰 Data Sources</label>
+                    <select name="sources" id="sources" multiple>
+                        {% for source in available_sources %}
+                        <option value="{{ source }}"
+                            {% if source in preferences.sources %}selected{% endif %}>
+                            {{ source|title }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <span class="help-text">Hold Ctrl/Cmd to select multiple</span>
+                </div>
+
+                <!-- Language Selection -->
+                <div class="filter-group">
+                    <label for="languages">🌐 Languages</label>
+                    <select name="languages" id="languages" multiple>
+                        {% for lang in available_languages %}
+                        <option value="{{ lang.code }}"
+                            {% if lang.code in preferences.languages %}selected{% endif %}>
+                            {{ lang.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <span class="help-text">Hold Ctrl/Cmd to select multiple</span>
+                </div>
+
+                <!-- Time Range -->
+                <div class="filter-group">
+                    <label for="time_range">📅 Time Range</label>
+                    <select name="time_range" id="time_range">
+                        {% for option in time_range_options %}
+                        <option value="{{ option.value }}"
+                            {% if option.value == preferences.time_range %}selected{% endif %}>
+                            {{ option.label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Custom Date Range (shown when 'custom' is selected) -->
+                <div class="filter-group" id="customDateRange" style="display: {% if preferences.time_range == 'custom' %}flex{% else %}none{% endif %};">
+                    <label for="custom_start_date">Custom Date Range</label>
+                    <input type="date" name="custom_start_date" id="custom_start_date"
+                        value="{{ preferences.custom_start_date|default:'' }}">
+                    <input type="date" name="custom_end_date" id="custom_end_date"
+                        value="{{ preferences.custom_end_date|default:'' }}"
+                        style="margin-top: 0.5rem;">
+                </div>
+
+                <!-- Keywords Include -->
+                <div class="filter-group">
+                    <label for="keywords_include">✅ Include Keywords</label>
+                    <input type="text" name="keywords_include" id="keywords_include"
+                        placeholder="AI, machine learning, Python..."
+                        value="{{ preferences.keywords_include|join:', ' }}">
+                    <span class="help-text">Comma-separated keywords</span>
+                </div>
+
+                <!-- Keywords Exclude -->
+                <div class="filter-group">
+                    <label for="keywords_exclude">❌ Exclude Keywords</label>
+                    <input type="text" name="keywords_exclude" id="keywords_exclude"
+                        placeholder="spam, politics..."
+                        value="{{ preferences.keywords_exclude|join:', ' }}">
+                    <span class="help-text">Comma-separated keywords</span>
+                </div>
+
+                <!-- Minimum Upvotes -->
+                <div class="filter-group">
+                    <label for="min_upvotes">⬆️ Min Upvotes</label>
+                    <input type="number" name="min_upvotes" id="min_upvotes"
+                        min="0" value="{{ preferences.min_upvotes|default:0 }}">
+                </div>
+
+                <!-- Minimum Comments -->
+                <div class="filter-group">
+                    <label for="min_comments">💬 Min Comments</label>
+                    <input type="number" name="min_comments" id="min_comments"
+                        min="0" value="{{ preferences.min_comments|default:0 }}">
+                </div>
+
+                <!-- Minimum Score -->
+                <div class="filter-group">
+                    <label for="min_score">⭐ Min Score</label>
+                    <input type="number" name="min_score" id="min_score"
+                        min="0" value="{{ preferences.min_score|default:0 }}">
+                </div>
+
+                <!-- Sort By -->
+                <div class="filter-group">
+                    <label for="sort_by">📊 Sort By</label>
+                    <select name="sort_by" id="sort_by">
+                        {% for option in sort_options %}
+                        <option value="{{ option.value }}"
+                            {% if option.value == preferences.sort_by %}selected{% endif %}>
+                            {{ option.label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Sort Order -->
+                <div class="filter-group">
+                    <label for="sort_order">🔄 Sort Order</label>
+                    <select name="sort_order" id="sort_order">
+                        <option value="desc" {% if preferences.sort_order == 'desc' %}selected{% endif %}>
+                            Descending (High to Low)
+                        </option>
+                        <option value="asc" {% if preferences.sort_order == 'asc' %}selected{% endif %}>
+                            Ascending (Low to High)
+                        </option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="filter-actions">
+                <button type="submit" class="btn btn-primary">
+                    🔍 Apply Filters
+                </button>
+                <button type="button" class="btn btn-outline" onclick="previewFilters()">
+                    👁️ Preview Results
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="resetFilters()">
+                    🔄 Reset All
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // Toggle filter panel visibility
+    function toggleFilters() {
+        const content = document.getElementById('filterContent');
+        const icon = document.getElementById('toggleIcon');
+        if (content.classList.contains('expanded')) {
+            content.classList.remove('expanded');
+            content.classList.add('collapsed');
+            icon.textContent = '▶';
+        } else {
+            content.classList.remove('collapsed');
+            content.classList.add('expanded');
+            icon.textContent = '▼';
+        }
+    }
+
+    // Show/hide custom date range based on time_range selection
+    document.getElementById('time_range').addEventListener('change', function() {
+        const customDateRange = document.getElementById('customDateRange');
+        if (this.value === 'custom') {
+            customDateRange.style.display = 'flex';
+        } else {
+            customDateRange.style.display = 'none';
+        }
+    });
+
+    // Preview filter results (AJAX)
+    async function previewFilters() {
+        const form = document.getElementById('filterForm');
+        const formData = new FormData(form);
+        const params = new URLSearchParams(formData);
+
+        try {
+            const response = await fetch('{% url "trends_viewer:filter_preview" %}?' + params.toString());
+            const data = await response.json();
+
+            if (data.success) {
+                let message = `Found ${data.total_count} matching articles\n\nBreakdown by source:\n`;
+                data.source_breakdown.forEach(item => {
+                    message += `• ${item.source}: ${item.count}\n`;
+                });
+                alert(message);
+            }
+        } catch (error) {
+            console.error('Preview failed:', error);
+            alert('Failed to preview results. Please try again.');
+        }
+    }
+
+    // Reset filters to defaults
+    async function resetFilters() {
+        if (!confirm('Reset all filters to defaults?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('{% url "trends_viewer:reset_preferences_ajax" %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                window.location.reload();
+            }
+        } catch (error) {
+            console.error('Reset failed:', error);
+            alert('Failed to reset preferences. Please try again.');
+        }
+    }
+
+    {% if user.is_authenticated %}
+    // Load user profiles into dropdown (Phase 2)
+    async function loadUserProfiles() {
+        try {
+            const response = await fetch('{% url "trends_viewer:get_user_profiles_ajax" %}');
+            const data = await response.json();
+
+            if (data.success) {
+                const selector = document.getElementById('profileSelector');
+                selector.innerHTML = '<option value="">Load Saved Profile...</option>';
+
+                data.profiles.forEach(profile => {
+                    const option = document.createElement('option');
+                    option.value = profile.id;
+                    option.textContent = profile.name + (profile.is_default ? ' (default)' : '');
+                    selector.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load profiles:', error);
+        }
+    }
+
+    // Load a saved profile
+    function loadProfile(profileId) {
+        if (!profileId) return;
+
+        // Redirect to activate profile
+        window.location.href = `/profile/activate/${profileId}/?next={{ request.path }}`;
+    }
+
+    // Quick save current filters as a new profile
+    async function quickSaveProfile() {
+        const profileName = prompt('Enter a name for this profile:');
+        if (!profileName) return;
+
+        try {
+            const formData = new FormData();
+            formData.append('name', profileName);
+
+            const response = await fetch('{% url "trends_viewer:quick_save_profile_ajax" %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert(data.message);
+                loadUserProfiles();  // Reload profile list
+            } else {
+                alert('Error: ' + data.error);
+            }
+        } catch (error) {
+            console.error('Quick save failed:', error);
+            alert('Failed to save profile. Please try again.');
+        }
+    }
+
+    // Load profiles on page load
+    document.addEventListener('DOMContentLoaded', loadUserProfiles);
+    {% endif %}
+
+    // Get CSRF token from cookies
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+</script>

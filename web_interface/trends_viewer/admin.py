@@ -3,6 +3,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.contrib import messages
 from .models import CollectionRun, CollectedTopic, TrendCluster, CrawlerSource
+from .models_preferences import UserPreference, UserPreferenceHistory, UserNotificationPreference
 
 
 @admin.register(CollectionRun)
@@ -173,17 +174,17 @@ class CrawlerSourceAdmin(admin.ModelAdmin):
             color = 'darkred'
 
         return format_html(
-            '<span style="color: {}; font-weight: bold;">{:.1f}%</span>',
+            '<span style="color: {}; font-weight: bold;">{}%</span>',
             color,
-            rate
+            f'{rate:.1f}'
         )
     success_rate_display.short_description = 'Success Rate'
 
     def items_collected_display(self, obj):
         """Display total items collected."""
         return format_html(
-            '<span style="font-weight: bold;">{:,}</span>',
-            obj.total_items_collected
+            '<span style="font-weight: bold;">{}</span>',
+            f'{obj.total_items_collected:,}'
         )
     items_collected_display.short_description = 'Items Collected'
 
@@ -279,3 +280,159 @@ class CrawlerSourceAdmin(admin.ModelAdmin):
         if not change:  # New object
             obj.created_by = request.user.username if request.user.is_authenticated else 'admin'
         super().save_model(request, obj, form, change)
+
+
+# ============================================================================
+# User Preference Admin (Phase 2)
+# ============================================================================
+
+@admin.register(UserPreference)
+class UserPreferenceAdmin(admin.ModelAdmin):
+    """Admin interface for user preference profiles."""
+
+    list_display = [
+        'user',
+        'name',
+        'is_default',
+        'view_mode',
+        'source_count',
+        'last_used',
+        'created_at',
+    ]
+
+    list_filter = [
+        'is_default',
+        'view_mode',
+        'created_at',
+        'last_used',
+    ]
+
+    search_fields = [
+        'user__username',
+        'name',
+        'description',
+    ]
+
+    readonly_fields = [
+        'created_at',
+        'updated_at',
+        'last_used',
+    ]
+
+    fieldsets = (
+        ('Profile Information', {
+            'fields': ('user', 'name', 'description', 'is_default')
+        }),
+        ('Data Sources & Languages', {
+            'fields': ('sources', 'languages', 'categories')
+        }),
+        ('Time Range', {
+            'fields': ('time_range', 'custom_start_date', 'custom_end_date')
+        }),
+        ('Keywords', {
+            'fields': ('keywords_include', 'keywords_exclude')
+        }),
+        ('Engagement Thresholds', {
+            'fields': ('min_upvotes', 'min_comments', 'min_score')
+        }),
+        ('Sorting & Display', {
+            'fields': ('sort_by', 'sort_order', 'items_per_page', 'view_mode')
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at', 'last_used'),
+            'classes': ('collapse',),
+        }),
+    )
+
+    def source_count(self, obj):
+        """Display number of selected sources."""
+        count = len(obj.sources)
+        return format_html('<span style="font-weight: bold;">{}</span>', count)
+    source_count.short_description = 'Sources'
+
+
+@admin.register(UserPreferenceHistory)
+class UserPreferenceHistoryAdmin(admin.ModelAdmin):
+    """Admin interface for preference history tracking."""
+
+    list_display = [
+        'user',
+        'profile',
+        'action',
+        'timestamp',
+        'ip_address',
+    ]
+
+    list_filter = [
+        'action',
+        'timestamp',
+    ]
+
+    search_fields = [
+        'user__username',
+        'profile__name',
+    ]
+
+    readonly_fields = [
+        'user',
+        'profile',
+        'action',
+        'preferences_snapshot',
+        'timestamp',
+        'ip_address',
+        'user_agent',
+    ]
+
+    def has_add_permission(self, request):
+        """History entries are created automatically."""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """History entries cannot be modified."""
+        return False
+
+
+@admin.register(UserNotificationPreference)
+class UserNotificationPreferenceAdmin(admin.ModelAdmin):
+    """Admin interface for notification preferences."""
+
+    list_display = [
+        'user',
+        'email_enabled',
+        'email_frequency',
+        'push_enabled',
+        'min_trend_score',
+        'updated_at',
+    ]
+
+    list_filter = [
+        'email_enabled',
+        'push_enabled',
+        'email_frequency',
+    ]
+
+    search_fields = [
+        'user__username',
+    ]
+
+    readonly_fields = [
+        'created_at',
+        'updated_at',
+    ]
+
+    fieldsets = (
+        ('Email Notifications', {
+            'fields': ('email_enabled', 'email_frequency')
+        }),
+        ('Push Notifications', {
+            'fields': ('push_enabled',),
+            'description': 'Browser push notifications (future feature)'
+        }),
+        ('Notification Filters', {
+            'fields': ('min_trend_score', 'min_topic_count')
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )

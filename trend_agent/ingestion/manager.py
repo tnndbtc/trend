@@ -64,8 +64,9 @@ class DefaultPluginManager(BasePluginManager):
         """
         Discover and load all available plugins.
 
-        This method scans the plugin directory for Python modules,
-        imports them, and registers any CollectorPlugin subclasses.
+        This method loads plugins from two sources:
+        1. Static plugins from the plugin directory (file-based)
+        2. Dynamic plugins from the database (configured via admin)
 
         Returns:
             List of loaded plugins
@@ -82,7 +83,7 @@ class DefaultPluginManager(BasePluginManager):
 
         loaded_plugins = []
 
-        # Discover all .py files in the plugin directory
+        # 1. Load static plugins from file system
         for plugin_file in plugin_dir.glob("*.py"):
             if plugin_file.name.startswith("_"):
                 # Skip __init__.py and private modules
@@ -105,12 +106,28 @@ class DefaultPluginManager(BasePluginManager):
                         plugin_instance = PluginRegistry.get_plugin(obj.metadata.name)
                         if plugin_instance:
                             loaded_plugins.append(plugin_instance)
-                            logger.info(f"Loaded plugin: {obj.metadata.name}")
+                            logger.info(f"Loaded static plugin: {obj.metadata.name}")
 
             except Exception as e:
                 logger.error(f"Failed to load plugin from {plugin_file}: {e}", exc_info=True)
 
-        logger.info(f"Successfully loaded {len(loaded_plugins)} plugins")
+        static_count = len(loaded_plugins)
+        logger.info(f"Loaded {static_count} static plugins from file system")
+
+        # 2. Load dynamic plugins from database
+        try:
+            from trend_agent.ingestion.dynamic_loader import get_dynamic_loader
+
+            dynamic_loader = get_dynamic_loader()
+            dynamic_plugins = await dynamic_loader.load_from_database()
+
+            loaded_plugins.extend(dynamic_plugins)
+            logger.info(f"Loaded {len(dynamic_plugins)} dynamic plugins from database")
+
+        except Exception as e:
+            logger.error(f"Failed to load dynamic plugins from database: {e}", exc_info=True)
+
+        logger.info(f"Successfully loaded {len(loaded_plugins)} total plugins ({static_count} static + {len(loaded_plugins) - static_count} dynamic)")
         return loaded_plugins
 
     async def reload_plugin(self, name: str) -> bool:

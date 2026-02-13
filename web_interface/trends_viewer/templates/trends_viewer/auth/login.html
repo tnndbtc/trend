@@ -1,0 +1,121 @@
+{% extends 'trends_viewer/base.html' %}
+
+{% block title %}Login - AI Trend Intelligence{% endblock %}
+
+{% block content %}
+<div style="max-width: 450px; margin: 3rem auto;">
+    <div class="card">
+        <h2 style="margin-bottom: 1.5rem; text-align: center;">Welcome Back</h2>
+
+        <p style="text-align: center; color: #666; margin-bottom: 2rem;">
+            Log in to access your saved preferences and personalized feeds.
+        </p>
+
+        <form method="post">
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+            <div style="background: #ffebee; border-left: 4px solid #f44336; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
+                <strong>Error:</strong> {{ form.non_field_errors }}
+            </div>
+            {% endif %}
+
+            {% for field in form %}
+            <div style="margin-bottom: 1.5rem;">
+                <label for="{{ field.id_for_label }}" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #555;">
+                    {{ field.label }}
+                </label>
+
+                {{ field }}
+
+                {% if field.errors %}
+                <div style="color: #f44336; margin-top: 0.5rem; font-size: 0.875rem;">
+                    {{ field.errors }}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <label style="display: flex; align-items: center; color: #666;">
+                    <input type="checkbox" name="remember" style="margin-right: 0.5rem;">
+                    Remember me
+                </label>
+                <a href="#" style="color: #3498db; font-size: 0.875rem;">
+                    Forgot password?
+                </a>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 1rem; font-size: 1rem;">
+                Log In
+            </button>
+        </form>
+
+        <div style="margin-top: 2rem; text-align: center; padding-top: 1.5rem; border-top: 1px solid #e0e0e0;">
+            <p style="color: #666;">
+                Don't have an account?
+                <a href="{% url 'trends_viewer:register' %}" style="color: #3498db; font-weight: 600;">
+                    Sign up for free
+                </a>
+            </p>
+        </div>
+    </div>
+
+    <div style="margin-top: 2rem; padding: 1.5rem; background: #f8f9fa; border-radius: 8px; text-align: center;">
+        <h3 style="margin-bottom: 1rem; font-size: 1rem; color: #555;">
+            Why create an account?
+        </h3>
+        <ul style="list-style: none; padding: 0; text-align: left; max-width: 350px; margin: 0 auto;">
+            <li style="margin-bottom: 0.75rem; color: #666;">
+                <span style="color: #3498db; margin-right: 0.5rem;">✓</span>
+                Save multiple preference profiles
+            </li>
+            <li style="margin-bottom: 0.75rem; color: #666;">
+                <span style="color: #3498db; margin-right: 0.5rem;">✓</span>
+                Access your feeds from any device
+            </li>
+            <li style="margin-bottom: 0.75rem; color: #666;">
+                <span style="color: #3498db; margin-right: 0.5rem;">✓</span>
+                Get notifications for trending topics
+            </li>
+            <li style="color: #666;">
+                <span style="color: #3498db; margin-right: 0.5rem;">✓</span>
+                Track your preference history
+            </li>
+        </ul>
+    </div>
+</div>
+
+<style>
+    .form-input {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 1rem;
+        transition: border-color 0.3s;
+    }
+    .form-input:focus {
+        outline: none;
+        border-color: #3498db;
+        box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    }
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+    .btn-primary {
+        background: #3498db;
+        color: white;
+    }
+    .btn-primary:hover {
+        background: #2980b9;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+</style>
+{% endblock %}

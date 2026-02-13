@@ -1,0 +1,229 @@
+{% extends 'trends_viewer/base.html' %}
+
+{% block title %}My Profile - AI Trend Intelligence{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2>My Profile</h2>
+            <p style="color: #666; margin-top: 0.5rem;">
+                Manage your preference profiles and account settings
+            </p>
+        </div>
+        <div style="display: flex; gap: 1rem;">
+            <a href="{% url 'trends_viewer:create_preference_profile' %}" class="btn btn-primary">
+                ➕ Create New Profile
+            </a>
+            <a href="{% url 'trends_viewer:save_current_preferences' %}" class="btn btn-outline">
+                💾 Save Current Filters
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- User Info Card -->
+<div class="card" style="margin-bottom: 2rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h3 style="margin-bottom: 0.5rem;">👤 {{ user.username }}</h3>
+            <p style="opacity: 0.9; margin-bottom: 0.25rem;">
+                {% if user.email %}✉️ {{ user.email }}{% endif %}
+            </p>
+            <p style="opacity: 0.9; font-size: 0.875rem;">
+                Member since {{ user.date_joined|date:"F Y" }}
+            </p>
+        </div>
+        <div style="text-align: right;">
+            <p style="font-size: 2rem; font-weight: bold; margin-bottom: 0.25rem;">{{ profiles.count }}</p>
+            <p style="opacity: 0.9; font-size: 0.875rem;">Saved Profiles</p>
+        </div>
+    </div>
+</div>
+
+<!-- Preference Profiles -->
+<div class="card" style="margin-bottom: 2rem;">
+    <h3 style="margin-bottom: 1.5rem;">📋 Your Preference Profiles</h3>
+
+    {% if profiles %}
+    <div style="display: grid; gap: 1rem;">
+        {% for profile in profiles %}
+        <div style="border: 2px solid {% if profile.is_default %}#3498db{% else %}#e0e0e0{% endif %}; border-radius: 8px; padding: 1.5rem; transition: all 0.3s; position: relative;">
+            {% if profile.is_default %}
+            <div style="position: absolute; top: -12px; left: 20px; background: #3498db; color: white; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">
+                DEFAULT
+            </div>
+            {% endif %}
+
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                <div style="flex: 1;">
+                    <h4 style="margin-bottom: 0.5rem; font-size: 1.1rem;">{{ profile.name }}</h4>
+                    {% if profile.description %}
+                    <p style="color: #666; font-size: 0.9rem; margin-bottom: 0.75rem;">{{ profile.description }}</p>
+                    {% endif %}
+
+                    <div style="display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.875rem; color: #666;">
+                        {% if profile.sources %}
+                        <span>📰 {{ profile.sources|length }} sources</span>
+                        {% endif %}
+                        {% if profile.languages %}
+                        <span>🌐 {{ profile.languages|length }} languages</span>
+                        {% endif %}
+                        <span>📅 {{ profile.time_range }}</span>
+                        <span>👁️ {{ profile.view_mode }}</span>
+                        <span style="color: #999;">Last used: {{ profile.last_used|timesince }} ago</span>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
+                    <a href="{% url 'trends_viewer:activate_preference_profile' profile.id %}"
+                       class="btn btn-sm btn-primary" title="Activate this profile">
+                        ▶️ Activate
+                    </a>
+                    <a href="{% url 'trends_viewer:edit_preference_profile' profile.id %}"
+                       class="btn btn-sm btn-outline" title="Edit profile">
+                        ✏️
+                    </a>
+                    {% if not profile.is_default %}
+                    <a href="{% url 'trends_viewer:set_default_profile' profile.id %}"
+                       class="btn btn-sm btn-outline" title="Set as default">
+                        ⭐
+                    </a>
+                    {% endif %}
+                    <a href="{% url 'trends_viewer:delete_preference_profile' profile.id %}"
+                       class="btn btn-sm btn-danger" title="Delete profile"
+                       onclick="return confirm('Delete profile \'{{ profile.name }}\'?')">
+                        🗑️
+                    </a>
+                </div>
+            </div>
+
+            <!-- Profile Details (Expandable) -->
+            <details style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e0e0e0;">
+                <summary style="cursor: pointer; color: #3498db; font-weight: 600; font-size: 0.875rem;">
+                    View Details
+                </summary>
+                <div style="margin-top: 1rem; padding-left: 1rem; font-size: 0.875rem; color: #666;">
+                    {% if profile.sources %}
+                    <p><strong>Sources:</strong> {{ profile.sources|join:", " }}</p>
+                    {% endif %}
+                    {% if profile.languages %}
+                    <p><strong>Languages:</strong> {{ profile.languages|join:", " }}</p>
+                    {% endif %}
+                    {% if profile.keywords_include %}
+                    <p><strong>Include Keywords:</strong> {{ profile.keywords_include|join:", " }}</p>
+                    {% endif %}
+                    {% if profile.keywords_exclude %}
+                    <p><strong>Exclude Keywords:</strong> {{ profile.keywords_exclude|join:", " }}</p>
+                    {% endif %}
+                    {% if profile.min_upvotes > 0 %}
+                    <p><strong>Min Upvotes:</strong> {{ profile.min_upvotes }}</p>
+                    {% endif %}
+                    <p><strong>Sort:</strong> {{ profile.get_sort_by_display }} ({{ profile.get_sort_order_display }})</p>
+                    <p><strong>Created:</strong> {{ profile.created_at|date:"Y-m-d H:i" }}</p>
+                    <p><strong>Updated:</strong> {{ profile.updated_at|date:"Y-m-d H:i" }}</p>
+                </div>
+            </details>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 3rem; background: #f8f9fa; border-radius: 8px;">
+        <div style="font-size: 3rem; margin-bottom: 1rem;">📋</div>
+        <h3 style="color: #666; margin-bottom: 1rem;">No preference profiles yet</h3>
+        <p style="color: #999; margin-bottom: 1.5rem;">
+            Create your first profile to save your filter settings
+        </p>
+        <a href="{% url 'trends_viewer:create_preference_profile' %}" class="btn btn-primary">
+            Create Profile
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Notification Settings -->
+<div class="card" style="margin-bottom: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h3>🔔 Notifications</h3>
+        <a href="{% url 'trends_viewer:manage_notifications' %}" class="btn btn-outline btn-sm">
+            Manage
+        </a>
+    </div>
+
+    <div style="background: #f8f9fa; padding: 1rem; border-radius: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <p style="margin-bottom: 0.25rem; font-weight: 600;">Email Notifications</p>
+                <p style="color: #666; font-size: 0.875rem;">
+                    {% if notification_prefs.email_enabled %}
+                        ✅ Enabled ({{ notification_prefs.get_email_frequency_display }})
+                    {% else %}
+                        ❌ Disabled
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity -->
+{% if recent_history %}
+<div class="card">
+    <h3 style="margin-bottom: 1.5rem;">📊 Recent Activity</h3>
+
+    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+        {% for entry in recent_history %}
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: #f8f9fa; border-radius: 4px;">
+            <div>
+                <span style="font-weight: 600;">{{ entry.get_action_display }}</span>
+                {% if entry.profile %}
+                    <span style="color: #666;">profile "{{ entry.profile.name }}"</span>
+                {% endif %}
+            </div>
+            <span style="color: #999; font-size: 0.875rem;">{{ entry.timestamp|timesince }} ago</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<style>
+    .btn {
+        display: inline-block;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.3s;
+    }
+    .btn-sm {
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+    }
+    .btn-primary {
+        background: #3498db;
+        color: white;
+    }
+    .btn-primary:hover {
+        background: #2980b9;
+    }
+    .btn-outline {
+        background: white;
+        color: #3498db;
+        border: 2px solid #3498db;
+    }
+    .btn-outline:hover {
+        background: #3498db;
+        color: white;
+    }
+    .btn-danger {
+        background: #e74c3c;
+        color: white;
+    }
+    .btn-danger:hover {
+        background: #c0392b;
+    }
+</style>
+{% endblock %}

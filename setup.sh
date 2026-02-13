@@ -1,7 +1,38 @@
 #!/bin/bash
 
-# AI Trend Intelligence Platform - Enhanced Setup Script
+# AI Trend Intelligence Platform - Master Setup Script
 # Comprehensive menu-driven interface for development and deployment
+#
+# ⚠️  IMPORTANT: This is the MASTER setup script for the entire project.
+#
+# SETUP SCRIPT CONVENTIONS:
+# ========================
+# • DO NOT create new setup_*.sh files (e.g., setup_translation.sh, setup_chinese.sh)
+# • ALL installation, configuration, and setup logic MUST be added to THIS file
+# • Use functions for modularity (e.g., setup_translation_service(), setup_platform_generation())
+# • Update the main menu to expose new setup functions to users
+# • Update command-line mode section (lines ~200-285) for direct CLI access
+#
+# WHY THIS MATTERS:
+# • Single source of truth for all setup operations
+# • Easier maintenance and debugging
+# • Consistent user experience
+# • Prevents script fragmentation and confusion
+#
+# HOW TO ADD NEW SETUP LOGIC:
+# 1. Create a new function in this file (e.g., setup_new_feature())
+# 2. Add menu option in show_main_menu() function
+# 3. Add case handler in main loop (bottom of file)
+# 4. Add CLI command in command-line mode section (if needed)
+# 5. Test with: ./setup.sh (menu) or ./setup.sh new-command (CLI)
+#
+# Example:
+#   setup_translation_service() {
+#       echo "Installing translation dependencies..."
+#       pip install jinja2 deep-translator
+#       echo "Configuring translation providers..."
+#       # ... more setup logic
+#   }
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -91,9 +122,11 @@ EOF
     echo -e "${COLOR_SUCCESS}📁 services/web-interface/${COLOR_RESET}"
     echo "   Purpose: Django web UI for browsing trends"
     echo "   Port: 11800"
-    echo "   Features: Web dashboard, admin panel, user authentication"
+    echo "   Features: Web dashboard, admin panel, user authentication, user preferences"
+    echo "   User Prefs: Session-based + persistent profile filtering (no re-crawling)"
     echo "   Quick Start: ./setup.sh dev-web"
     echo "   Documentation: services/web-interface/README.md"
+    echo "   Preference Docs: docs/USER_PREFERENCES_COMPLETE.md"
     echo ""
 
     echo -e "${COLOR_SUCCESS}📁 services/crawler/${COLOR_RESET}"
@@ -288,18 +321,28 @@ if [ $# -gt 0 ]; then
             show_folder_structure
             ;;
 
+        # User preference commands
+        setup-prefs|setup-preferences)
+            setup_user_preferences
+            ;;
+        test-prefs|test-preferences)
+            test_user_preferences
+            ;;
+
         help|--help|-h)
             echo "Quick Commands:"
-            echo "  ./setup.sh dev-api       - Start API service"
-            echo "  ./setup.sh dev-web       - Start web interface"
-            echo "  ./setup.sh dev-crawler   - Start crawler"
-            echo "  ./setup.sh dev-infra     - Start infrastructure"
-            echo "  ./setup.sh build         - Build all Docker images"
-            echo "  ./setup.sh up            - Start all services"
-            echo "  ./setup.sh down          - Stop all services"
-            echo "  ./setup.sh logs [service]- View logs"
-            echo "  ./setup.sh status        - Show service status"
-            echo "  ./setup.sh folders       - Show folder structure"
+            echo "  ./setup.sh dev-api         - Start API service"
+            echo "  ./setup.sh dev-web         - Start web interface"
+            echo "  ./setup.sh dev-crawler     - Start crawler"
+            echo "  ./setup.sh dev-infra       - Start infrastructure"
+            echo "  ./setup.sh build           - Build all Docker images"
+            echo "  ./setup.sh up              - Start all services"
+            echo "  ./setup.sh down            - Stop all services"
+            echo "  ./setup.sh logs [service]  - View logs"
+            echo "  ./setup.sh status          - Show service status"
+            echo "  ./setup.sh folders         - Show folder structure"
+            echo "  ./setup.sh setup-prefs     - Setup user preferences"
+            echo "  ./setup.sh test-prefs      - Test user preferences"
             echo ""
             echo "Or run './setup.sh' for interactive menu"
             ;;
@@ -388,6 +431,11 @@ show_main_menu() {
     echo -e "${COLOR_INFO}🔐 Configuration${COLOR_RESET}"
     echo -e "  ${COLOR_HIGHLIGHT}10)${COLOR_RESET} Generate API Keys"
     echo -e "  ${COLOR_HIGHLIGHT}11)${COLOR_RESET} Show All Access URLs"
+    echo ""
+
+    echo -e "${COLOR_INFO}👤 User Preferences${COLOR_RESET}"
+    echo -e "  ${COLOR_HIGHLIGHT}14)${COLOR_RESET} Setup User Preferences (Phase 1 + Phase 2)"
+    echo -e "  ${COLOR_HIGHLIGHT}15)${COLOR_RESET} Test User Preferences"
     echo ""
 
     echo -e "${COLOR_INFO}📚 Documentation & Help${COLOR_RESET}"
@@ -695,6 +743,13 @@ show_all_urls() {
     echo -e "  Grafana:       http://localhost:3000${IP_DISPLAY}:3000"
     echo -e "  Prometheus:    http://localhost:9090${IP_DISPLAY}:9090"
     echo ""
+    echo "User Preferences (Phase 1 + Phase 2):"
+    echo -e "  🔍 My Feed (Filtered Topics): http://localhost:11800/filtered/topics/${IP_DISPLAY}:11800/filtered/topics/"
+    echo -e "  📈 My Feed (Filtered Trends): http://localhost:11800/filtered/trends/${IP_DISPLAY}:11800/filtered/trends/"
+    echo -e "  👤 User Profile:              http://localhost:11800/profile/${IP_DISPLAY}:11800/profile/"
+    echo -e "  🆕 Sign Up:                   http://localhost:11800/register/${IP_DISPLAY}:11800/register/"
+    echo -e "  🔑 Login:                     http://localhost:11800/login/${IP_DISPLAY}:11800/login/"
+    echo ""
     echo "Databases:"
     if [ -n "$LOCAL_IP" ]; then
         echo -e "  PostgreSQL:    localhost:5433 ${COLOR_MUTED}or${COLOR_RESET} ${LOCAL_IP}:5433"
@@ -853,9 +908,170 @@ show_cli_reference() {
     echo "  ./setup.sh logs api     - View API logs"
     echo "  ./setup.sh status       - Show service status"
     echo ""
+    echo "User Preferences:"
+    echo "  ./setup.sh setup-prefs  - Setup user preferences"
+    echo "  ./setup.sh test-prefs   - Test user preferences"
+    echo ""
     echo "Information:"
     echo "  ./setup.sh folders      - Show folder structure"
     echo "  ./setup.sh help         - This help"
+    echo ""
+    read -p "Press Enter to continue..."
+}
+
+# Setup User Preferences (Phase 1 + Phase 2)
+setup_user_preferences() {
+    echo ""
+    echo -e "${COLOR_HIGHLIGHT}Setup User Preferences (Phase 1 + Phase 2)${COLOR_RESET}"
+    echo ""
+
+    print_info "This will setup the complete user preference system:"
+    echo "  ✓ Phase 1: Session-based filtering (no login)"
+    echo "  ✓ Phase 2: User accounts with persistent profiles"
+    echo ""
+
+    if ! $DOCKER_COMPOSE ps | grep -q "web.*Up"; then
+        print_error "Web container is not running"
+        echo "Please start the web interface first:"
+        echo "  Option 2) Basic Setup (Web Interface Only)"
+        echo "  or"
+        echo "  Option 3) Start/Stop Services"
+        echo ""
+        read -p "Press Enter to continue..."
+        return 1
+    fi
+
+    print_success "Web container is running"
+    echo ""
+
+    print_info "Step 1: Creating database migrations..."
+    if $DOCKER_COMPOSE exec web python manage.py makemigrations trends_viewer; then
+        print_success "Migrations created"
+    else
+        print_error "Failed to create migrations"
+        read -p "Press Enter to continue..."
+        return 1
+    fi
+
+    echo ""
+    print_info "Step 2: Applying migrations..."
+    if $DOCKER_COMPOSE exec web python manage.py migrate; then
+        print_success "Migrations applied"
+    else
+        print_error "Failed to apply migrations"
+        read -p "Press Enter to continue..."
+        return 1
+    fi
+
+    echo ""
+    print_success "User Preference System Setup Complete!"
+    echo ""
+    echo -e "${COLOR_HIGHLIGHT}What's Now Available:${COLOR_RESET}"
+    echo ""
+    echo "For Anonymous Users (Phase 1):"
+    echo "  • Visit: http://localhost:11800/filtered/topics/"
+    echo "  • Set filters (sources, languages, keywords, etc.)"
+    echo "  • Click 'Apply Filters'"
+    echo "  • Articles queried from database (NO re-crawling!)"
+    echo ""
+    echo "For Authenticated Users (Phase 2):"
+    echo "  • Sign up: http://localhost:11800/register/"
+    echo "  • Save multiple preference profiles"
+    echo "  • Quick save from filter panel (💾 button)"
+    echo "  • Manage profiles: http://localhost:11800/profile/"
+    echo "  • Profiles sync across devices"
+    echo ""
+    echo -e "${COLOR_INFO}Next Steps:${COLOR_RESET}"
+    echo "  1. Run option 15) Test User Preferences"
+    echo "  2. Or visit: http://localhost:11800/filtered/trends/"
+    echo ""
+    echo -e "${COLOR_INFO}Documentation:${COLOR_RESET}"
+    echo "  • Complete Guide: docs/USER_PREFERENCES_COMPLETE.md"
+    echo "  • Quick Start: docs/PHASE1_QUICKSTART.md"
+    echo ""
+    read -p "Press Enter to continue..."
+}
+
+# Test User Preferences
+test_user_preferences() {
+    echo ""
+    echo -e "${COLOR_HIGHLIGHT}Test User Preferences${COLOR_RESET}"
+    echo ""
+
+    if ! $DOCKER_COMPOSE ps | grep -q "web.*Up"; then
+        print_error "Web container is not running"
+        echo "Please start the web interface first"
+        echo ""
+        read -p "Press Enter to continue..."
+        return 1
+    fi
+
+    print_success "Web container is running"
+    echo ""
+
+    echo -e "${COLOR_HIGHLIGHT}Testing Guide - Phase 1 (No Login Required)${COLOR_RESET}"
+    echo ""
+    echo "1. Open your browser:"
+    echo "   http://localhost:11800/filtered/topics/"
+    echo ""
+    echo "2. Set Your Filters:"
+    echo "   ✓ Select sources (hold Ctrl/Cmd for multiple)"
+    echo "   ✓ Select languages"
+    echo "   ✓ Choose time range (e.g., Last 7 days)"
+    echo "   ✓ Add keywords to include/exclude"
+    echo "   ✓ Set minimum upvotes/comments/score"
+    echo ""
+    echo "3. Click 'Apply Filters'"
+    echo "   → See only articles matching your criteria"
+    echo "   → All queries from database (NO re-crawling!)"
+    echo ""
+    echo "4. Try 'Preview Results' button"
+    echo "   → Shows count before applying"
+    echo ""
+    echo "5. Try 'Reset All' button"
+    echo "   → Returns to defaults"
+    echo ""
+    echo ""
+    echo -e "${COLOR_HIGHLIGHT}Testing Guide - Phase 2 (With Login)${COLOR_RESET}"
+    echo ""
+    echo "1. Create Account:"
+    echo "   http://localhost:11800/register/"
+    echo ""
+    echo "2. Login:"
+    echo "   http://localhost:11800/login/"
+    echo ""
+    echo "3. Set filters and click 💾 button"
+    echo "   → Enter profile name"
+    echo "   → Profile saved instantly"
+    echo ""
+    echo "4. Load saved profile:"
+    echo "   → Use dropdown in filter panel"
+    echo "   → Settings apply immediately"
+    echo ""
+    echo "5. Manage all profiles:"
+    echo "   http://localhost:11800/profile/"
+    echo "   → View, edit, delete profiles"
+    echo "   → Set default profile"
+    echo "   → View preference history"
+    echo ""
+    echo "6. Test Cross-Device Sync:"
+    echo "   → Login on another device/browser"
+    echo "   → Same profiles available!"
+    echo ""
+    echo ""
+    echo -e "${COLOR_HIGHLIGHT}Test URLs:${COLOR_RESET}"
+    echo "  Filtered Topics:  http://localhost:11800/filtered/topics/"
+    echo "  Filtered Trends:  http://localhost:11800/filtered/trends/"
+    echo "  Register:         http://localhost:11800/register/"
+    echo "  Login:            http://localhost:11800/login/"
+    echo "  Profile:          http://localhost:11800/profile/"
+    echo ""
+    echo -e "${COLOR_HIGHLIGHT}Run Automated Tests:${COLOR_RESET}"
+    echo "  \$DOCKER_COMPOSE exec web python manage.py test trends_viewer.tests_preferences"
+    echo ""
+    echo -e "${COLOR_INFO}Documentation:${COLOR_RESET}"
+    echo "  Complete Guide: docs/USER_PREFERENCES_COMPLETE.md"
+    echo "  Quick Start:    docs/PHASE1_QUICKSTART.md"
     echo ""
     read -p "Press Enter to continue..."
 }
@@ -908,6 +1124,12 @@ while true; do
             ;;
         13)
             show_cli_reference
+            ;;
+        14)
+            setup_user_preferences
+            ;;
+        15)
+            test_user_preferences
             ;;
         0)
             clear

@@ -129,7 +129,23 @@ class Command(BaseCommand):
     async def run_pipeline(self, collection_run, categories, max_posts_per_category):
         """Run the full trend collection and analysis pipeline."""
 
-        # Step 1: Collect from all sources
+        # Step 1: Load all plugins (static and dynamic from database)
+        self.stdout.write('⚙️  Loading collector plugins...')
+        try:
+            from trend_agent.ingestion.manager import DefaultPluginManager
+
+            plugin_manager = DefaultPluginManager()
+            await plugin_manager.load_plugins()
+            self.stdout.write('   ✅ Plugins loaded successfully')
+
+            # Refresh the collector registry to include newly loaded dynamic plugins
+            from trend_agent.collectors import auto_discover_collectors
+            auto_discover_collectors()
+
+        except Exception as e:
+            self.stdout.write(f'   ⚠️  Failed to load plugins: {e}')
+
+        # Step 2: Collect from all sources
         self.stdout.write('🔍 Collecting trending topics...')
 
         # Get all registered collectors

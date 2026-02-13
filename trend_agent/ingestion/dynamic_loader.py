@@ -306,10 +306,25 @@ class DynamicPluginLoader:
                 return []
 
             try:
-                # TODO: Implement sandboxed execution (Phase 6)
-                # For now, log a warning
-                logger.warning(f"Custom plugin code execution not yet sandboxed: {cfg['name']}")
-                return []
+                # Use the sandboxed execution environment
+                from trend_agent.ingestion.sandbox import get_sandbox
+
+                sandbox = get_sandbox(
+                    timeout_seconds=cfg.get('timeout_seconds', 30),
+                    max_memory_mb=100
+                )
+
+                logger.info(f"Executing custom plugin code for: {cfg['name']}")
+
+                # Execute plugin code in sandbox
+                items = await sandbox.execute_plugin_code(
+                    code=plugin_code,
+                    collect_function_name='collect',
+                    config=cfg
+                )
+
+                logger.info(f"Collected {len(items)} items from custom plugin: {cfg['name']}")
+                return items
 
             except Exception as e:
                 logger.error(f"Failed to execute custom plugin {cfg['name']}: {e}", exc_info=True)
