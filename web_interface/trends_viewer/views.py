@@ -6,7 +6,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.core.cache import cache
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_control
-from .models import CollectionRun, CollectedTopic, TrendCluster
+from .models import CollectionRun, CollectedTopic, TrendCluster, TranslatedContent, TrendTranslationStatus
 import asyncio
 import logging
 import threading
@@ -55,14 +55,26 @@ def get_translation_manager():
 
 def normalize_lang_code(lang_code):
     """
-    Normalize language codes for LibreTranslate compatibility.
+    Normalize language codes to proper locale format (language-REGION).
 
-    LibreTranslate uses zh-Hans for Simplified Chinese instead of zh.
+    Handles legacy formats and provides backwards compatibility.
+    Standard format: zh-Hans, en-US, es-ES, etc.
     """
     lang_map = {
-        'zh': 'zh-Hans',  # Simplified Chinese for LibreTranslate
-        'zh-CN': 'zh-Hans',
-        'zh-TW': 'zh-Hant',
+        # Legacy Chinese codes
+        'zh': 'zh-Hans',         # Simplified Chinese (legacy)
+        'zh-CN': 'zh-Hans',      # Simplified Chinese (legacy)
+        'zh-TW': 'zh-Hant',      # Traditional Chinese (legacy)
+
+        # Legacy two-letter codes
+        'en': 'en-US',           # English
+        'es': 'es-ES',           # Spanish
+        'fr': 'fr-FR',           # French
+        'de': 'de-DE',           # German
+        'ja': 'ja-JP',           # Japanese
+        'ko': 'ko-KR',           # Korean
+        'ru': 'ru-RU',           # Russian
+        'ar': 'ar-SA',           # Arabic
     }
     return lang_map.get(lang_code, lang_code)
 
@@ -488,6 +500,111 @@ def translate_topics_batch(topics, target_lang='zh', session=None):
         return topics
 
 
+def load_pretranslated_content(trend, topics, target_lang='zh'):
+    """
+    Bulk-load pre-translated content from database for a trend and its topics.
+
+    This is the fast path - uses 2-3 bulk queries instead of 111+ individual lookups.
+
+    Args:
+        trend: TrendCluster instance
+        topics: List of CollectedTopic instances
+        target_lang: Target language code
+
+    Returns:
+        dict with 'trend' and 'topics' keys if pre-translated, None otherwise
+    """
+    if target_lang == 'en-US':
+        return None
+
+    try:
+        # Check if this trend has been pre-translated
+        translation_status = TrendTranslationStatus.objects.filter(
+            trend=trend,
+            language=target_lang,
+            translated=True
+        ).first()
+
+        if not translation_status:
+            logger.info(f"⚠️  Trend {trend.id} not pre-translated for {target_lang}")
+            return None
+
+        logger.info(f"✅ Pre-translation found for trend {trend.id} ({target_lang})")
+
+        # Collect all texts and compute their MD5 hashes
+        # Hash format: MD5(f"{text}|{source_lang}|{target_lang}")
+        text_hash_map = {}  # hash -> (object, field_name)
+
+        # Trend fields
+        for field_name, text in [
+            ('title', trend.title),
+            ('summary', trend.summary),
+            ('full_summary', trend.full_summary or '')
+        ]:
+            if text:
+                hash_input = f"{text}|en|{target_lang}".encode("utf-8")
+                text_hash = hashlib.md5(hash_input).hexdigest()
+                text_hash_map[text_hash] = (trend, field_name)
+
+        # Topic fields
+        for topic in topics:
+            for field_name, text in [
+                ('title', topic.title),
+                ('description', topic.description or ''),
+                ('title_summary', topic.title_summary or '')
+            ]:
+                if text:
+                    hash_input = f"{text}|en|{target_lang}".encode("utf-8")
+                    text_hash = hashlib.md5(hash_input).hexdigest()
+                    text_hash_map[text_hash] = (topic, field_name)
+
+        # Bulk-query all translations in one go
+        hash_list = list(text_hash_map.keys())
+        translations = TranslatedContent.objects.filter(
+            source_text_hash__in=hash_list,
+            target_language=target_lang
+        ).values('source_text_hash', 'translated_text')
+
+        # Build hash -> translation mapping
+        translation_map = {
+            t['source_text_hash']: t['translated_text']
+            for t in translations
+        }
+
+        logger.info(f"📦 Bulk-loaded {len(translation_map)}/{len(hash_list)} translations")
+
+        # If no translations found, fall back to slow path
+        if len(translation_map) == 0:
+            logger.warning(f"⚠️  No translations found in database for trend {trend.id}, falling back to slow path")
+            return None
+
+        # Apply translations to objects
+        for text_hash, (obj, field_name) in text_hash_map.items():
+            if text_hash in translation_map:
+                translated_text = translation_map[text_hash]
+                if translated_text:
+                    setattr(obj, field_name, translated_text)
+
+        # Mark as translated
+        trend.is_translated = True
+        trend.translation_lang = target_lang
+
+        for topic in topics:
+            topic.is_translated = True
+            topic.translation_lang = target_lang
+
+        logger.info(f"🚀 Fast path: Pre-translated content loaded for trend {trend.id}")
+
+        return {
+            'trend': trend,
+            'topics': topics
+        }
+
+    except Exception as e:
+        logger.error(f"Error loading pre-translated content: {e}")
+        return None
+
+
 def dashboard(request):
     """Dashboard view showing overview of recent collection runs."""
     recent_runs = CollectionRun.objects.all()[:5]
@@ -585,6 +702,17 @@ class TrendDetailView(DetailView):
         # Server-side translation: Translate content before rendering
         # No English flash - content loads directly in requested language
         if target_lang != 'en':
+            # FAST PATH: Try to load pre-translated content from database first
+            pretranslated = load_pretranslated_content(self.object, topics_list, target_lang)
+            if pretranslated:
+                logger.info(f"🚀 FAST PATH: Using pre-translated content for trend {self.object.id} ({target_lang})")
+                context['trend'] = pretranslated['trend']
+                context['topics'] = pretranslated['topics']
+                # Cache for next time
+                set_cached_translation_context(self.object.id, target_lang, pretranslated)
+                return context
+
+            # FALLBACK 1: Check Django cache (1-hour TTL)
             cached_context = get_cached_translation_context(self.object.id, target_lang)
             if cached_context:
                 logger.info(f"✅ Cache HIT: Using cached translation for trend {self.object.id} ({target_lang})")
@@ -592,16 +720,15 @@ class TrendDetailView(DetailView):
                 context['topics'] = cached_context['topics']
                 return context
 
-            logger.info(f"⚠️  Cache MISS: Translating trend {self.object.id} to {target_lang}")
-            translate_trends_batch([self.object], target_lang, self.request.session)
-            if topics_list:
-                translate_topics_batch(topics_list, target_lang, self.request.session)
-
-            translation_context = {
-                'trend': self.object,
-                'topics': topics_list
-            }
-            set_cached_translation_context(self.object.id, target_lang, translation_context)
+            # NO TRANSLATION AVAILABLE: Show nothing instead of triggering slow on-demand translation
+            logger.warning(
+                f"⚠️  No translation available for trend {self.object.id} ({target_lang}). "
+                f"Showing empty content. Run pre-translation to populate translations."
+            )
+            context['trend'] = None
+            context['topics'] = []
+            context['translation_unavailable'] = True
+            return context
 
         return context
 

@@ -1,13 +1,30 @@
 {% extends 'trends_viewer/base.html' %}
 {% load source_filters %}
 
-{% block title %}{{ trend.title }} - AI Trend Intelligence{% endblock %}
+{% block title %}{% if trend %}{{ trend.title }}{% else %}Translation Unavailable{% endif %} - AI Trend Intelligence{% endblock %}
 
 {% block content %}
 <div style="margin-bottom: 1rem;">
     <a href="{% url 'trends_viewer:trend_list' %}?lang={{ current_lang }}" style="color: #3498db; text-decoration: none;">&larr; Back to Trends</a>
 </div>
 
+{% if translation_unavailable %}
+<div class="card" style="text-align: center; padding: 3rem;">
+    <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
+    <h2 style="color: #e74c3c; margin-bottom: 1rem;">Translation Not Available</h2>
+    <p style="color: #666; font-size: 1.1rem; margin-bottom: 1.5rem;">
+        This content has not been translated to <strong>{{ current_lang }}</strong> yet.
+    </p>
+    <p style="color: #666; margin-bottom: 2rem;">
+        Please try:
+    </p>
+    <ul style="text-align: left; display: inline-block; color: #666;">
+        <li>Viewing in <a href="?lang=en" style="color: #3498db;">English</a></li>
+        <li>Waiting for background translation to complete</li>
+        <li>Contact admin to run pre-translation for this language</li>
+    </ul>
+</div>
+{% elif trend %}
 <div class="card" data-trend-id="{{ trend.id }}">
     <div style="display: flex; align-items: start; gap: 1.5rem; margin-bottom: 1.5rem;">
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; min-width: 80px; height: 80px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 2rem; font-weight: bold;">
@@ -68,5 +85,6 @@
     <p style="text-align: center; color: #666; padding: 2rem;">No topics found for this trend.</p>
     {% endif %}
 </div>
+{% endif %}
 
 {% endblock %}

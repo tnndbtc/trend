@@ -14,62 +14,88 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# Supported language codes
+# Supported language codes (proper locale format: language-REGION)
 SUPPORTED_LANGUAGES = {
-    'en', 'zh', 'es', 'fr', 'de', 'ja', 'ko', 'ru'
+    'en-US',   # English (United States)
+    'zh-Hans', # Simplified Chinese
+    'zh-Hant', # Traditional Chinese (Taiwan)
+    'es-ES',   # Spanish (Spain)
+    'fr-FR',   # French (France)
+    'de-DE',   # German (Germany)
+    'ja-JP',   # Japanese (Japan)
+    'ko-KR',   # Korean (South Korea)
+    'ru-RU',   # Russian (Russia)
+    'ar-SA',   # Arabic (Saudi Arabia)
 }
 
-# Language code normalization map
+# Language code normalization map (legacy → proper locale)
 LANGUAGE_NORMALIZATION = {
-    'zh-cn': 'zh',
-    'zh-hans': 'zh',
-    'zh-hant': 'zh',
-    'zh-tw': 'zh',
-    'en-us': 'en',
-    'en-gb': 'en',
-    'es-es': 'es',
-    'es-mx': 'es',
-    'fr-fr': 'fr',
-    'de-de': 'de',
-    'ja-jp': 'ja',
-    'ko-kr': 'ko',
-    'ru-ru': 'ru',
+    # Legacy two-letter codes
+    'en': 'en-US',
+    'zh': 'zh-Hans',
+    'es': 'es-ES',
+    'fr': 'fr-FR',
+    'de': 'de-DE',
+    'ja': 'ja-JP',
+    'ko': 'ko-KR',
+    'ru': 'ru-RU',
+    'ar': 'ar-SA',
+
+    # Legacy Chinese variants
+    'zh-cn': 'zh-Hans',
+    'zh-hans': 'zh-Hans',
+    'zh-hant': 'zh-Hant',
+    'zh-tw': 'zh-Hant',
+
+    # Legacy English variants
+    'en-us': 'en-US',
+    'en-gb': 'en-US',
+
+    # Legacy Spanish variants
+    'es-es': 'es-ES',
+    'es-mx': 'es-ES',
+
+    # Legacy other variants
+    'fr-fr': 'fr-FR',
+    'de-de': 'de-DE',
+    'ja-jp': 'ja-JP',
+    'ko-kr': 'ko-KR',
+    'ru-ru': 'ru-RU',
+    'ar-sa': 'ar-SA',
 }
 
 
 def normalize_lang_code(lang_code):
     """
-    Normalize language code to standard 2-letter format.
+    Normalize language code to proper locale format (language-REGION).
+
+    Handles legacy formats for backwards compatibility.
+    Standard format: zh-Hans, en-US, es-ES, etc.
 
     Args:
         lang_code: Raw language code from URL/session/cookie
 
     Returns:
-        Normalized 2-letter language code or 'en' if invalid
+        Normalized locale code or 'en-US' if invalid
     """
     if not lang_code:
-        return 'en'
+        return 'en-US'
 
-    # Convert to lowercase
-    lang_code = str(lang_code).lower().strip()
+    # Convert to lowercase for comparison
+    lang_code_lower = str(lang_code).lower().strip()
 
     # Check if it's in normalization map
-    if lang_code in LANGUAGE_NORMALIZATION:
-        return LANGUAGE_NORMALIZATION[lang_code]
+    if lang_code_lower in LANGUAGE_NORMALIZATION:
+        return LANGUAGE_NORMALIZATION[lang_code_lower]
 
-    # Check if it's already a valid 2-letter code
-    if lang_code in SUPPORTED_LANGUAGES:
-        return lang_code
-
-    # Try extracting first 2 letters
-    if len(lang_code) >= 2:
-        short_code = lang_code[:2]
-        if short_code in SUPPORTED_LANGUAGES:
-            return short_code
+    # Check if it's already a valid locale code (case-insensitive)
+    for supported in SUPPORTED_LANGUAGES:
+        if lang_code_lower == supported.lower():
+            return supported
 
     # Default to English
-    logger.warning(f"Unsupported language code: {lang_code}, defaulting to 'en'")
-    return 'en'
+    logger.warning(f"Unsupported language code: {lang_code}, defaulting to 'en-US'")
+    return 'en-US'
 
 
 class LanguagePreferenceMiddleware:

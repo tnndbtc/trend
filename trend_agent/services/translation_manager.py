@@ -8,6 +8,7 @@ automatic fallback, and Redis-based + database caching to minimize costs.
 import hashlib
 import logging
 from typing import Dict, List, Optional
+from asgiref.sync import sync_to_async
 
 from trend_agent.intelligence.interfaces import TranslationError
 from trend_agent.observability.metrics import api_request_counter
@@ -285,7 +286,8 @@ class TranslationCache:
         hash_input = f"{text}|{source}|{target_lang}".encode("utf-8")
         text_hash = hashlib.md5(hash_input).hexdigest()
 
-        db_success = save_db_translation(
+        # Wrap sync function in async context
+        db_success = await sync_to_async(save_db_translation)(
             source_text=text,
             source_text_hash=text_hash,
             translation=translation,
