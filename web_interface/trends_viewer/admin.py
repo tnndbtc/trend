@@ -1,9 +1,18 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from django.urls import reverse
+from django.urls import reverse, path
 from django.contrib import messages
-from .models import CollectionRun, CollectedTopic, TrendCluster, CrawlerSource, TranslatedContent, SystemSettings
+from django.db import models as django_models
+from .models import CollectionRun, CollectedTopic, TrendCluster, CrawlerSource, TranslatedContent, TrendTranslationStatus, SystemSettings
 from .models_preferences import UserPreference, UserPreferenceHistory, UserNotificationPreference
+from .forms import TrendClusterAdminForm
+
+# Import translation admin functionality
+from .admin_translation import (
+    TrendTranslationStatusAdmin,
+    add_translation_actions_to_admin,
+    get_translation_dashboard_urls
+)
 
 
 @admin.register(CollectionRun)
@@ -24,11 +33,136 @@ class CollectedTopicAdmin(admin.ModelAdmin):
 
 @admin.register(TrendCluster)
 class TrendClusterAdmin(admin.ModelAdmin):
-    list_display = ['id', 'rank', 'title', 'score', 'collection_run', 'created_at']
-    list_filter = ['collection_run', 'created_at']
+    """
+    Simplified admin interface for manually adding trends.
+
+    Auto-fills technical fields (collection_run, rank, score) so users only
+    need to provide the trend title and summary.
+    """
+
+    form = TrendClusterAdminForm
+
+    list_display = ['rank', 'title', 'language', 'score', 'collection_run_link', 'created_at']
+    list_filter = ['language', 'collection_run', 'created_at']
     search_fields = ['title', 'summary']
     readonly_fields = ['created_at']
-    ordering = ['collection_run', 'rank']
+    ordering = ['-created_at']
+
+    fieldsets = (
+        ('Essential Information', {
+            'fields': ('title', 'summary'),
+            'description': (
+                '<strong>Quick Add:</strong> Just enter the title and summary - '
+                'everything else will be auto-filled! 🎉'
+            )
+        }),
+        ('Advanced Settings', {
+            'fields': ('language', 'title_summary', 'full_summary'),
+            'classes': ('collapse',),
+            'description': (
+                'Optional: Customize language and enhanced summaries. '
+                'Leave blank to use defaults.'
+            )
+        }),
+        ('Auto-Generated Fields', {
+            'fields': ('collection_run', 'rank', 'score', 'created_at'),
+            'classes': ('collapse',),
+            'description': (
+                'These fields are automatically set when you save. '
+                'Advanced users can override if needed.'
+            )
+        }),
+    )
+
+    def collection_run_link(self, obj):
+        """Show collection run as a clickable link."""
+        if obj.collection_run:
+            url = reverse('admin:trends_viewer_collectionrun_change', args=[obj.collection_run.id])
+            return format_html(
+                '<a href="{}">Run #{} ({})</a>',
+                url,
+                obj.collection_run.id,
+                obj.collection_run.timestamp.strftime('%Y-%m-%d')
+            )
+        return '-'
+    collection_run_link.short_description = 'Collection Run'
+
+    def get_readonly_fields(self, request, obj=None):
+        """Make certain fields readonly after creation."""
+        if obj:  # Editing existing object - allow editing everything
+            return ['created_at']
+        # When creating new object, only created_at is readonly
+        return ['created_at']
+
+    def save_model(self, request, obj, form, change):
+        """Auto-populate technical fields when creating new trend."""
+        if not change:  # New object being created
+            # 1. Auto-assign collection_run if not provided
+            # Use collection_run_id to avoid RelatedObjectDoesNotExist error
+            if obj.collection_run_id is None:
+                latest_run = CollectionRun.objects.filter(status='completed').first()
+
+                if not latest_run:
+                    # Create a manual collection run if none exists
+                    latest_run = CollectionRun.objects.create(
+                        status='completed',
+                        topics_count=0,
+                        clusters_count=0
+                    )
+                    messages.info(
+                        request,
+                        f'Created new manual Collection Run #{latest_run.id} for this trend.'
+                    )
+
+                obj.collection_run = latest_run
+
+            # 2. Auto-generate next rank if not provided
+            if obj.rank is None:
+                max_rank = TrendCluster.objects.filter(
+                    collection_run=obj.collection_run
+                ).aggregate(django_models.Max('rank'))['rank__max']
+                obj.rank = (max_rank or 0) + 1
+
+            # 3. Set default score if not provided
+            if obj.score is None:
+                obj.score = 1.0
+
+            # 4. Auto-fill optional summary fields if blank
+            if not obj.title_summary:
+                obj.title_summary = obj.title
+            if not obj.full_summary:
+                obj.full_summary = obj.summary
+
+        super().save_model(request, obj, form, change)
+
+        # Update collection run cluster count
+        if not change:
+            obj.collection_run.clusters_count = TrendCluster.objects.filter(
+                collection_run=obj.collection_run
+            ).count()
+            obj.collection_run.save()
+
+            messages.success(
+                request,
+                format_html(
+                    '✅ Trend created successfully!<br>'
+                    '📊 Auto-assigned rank <strong>#{}</strong> in Collection Run <strong>#{}</strong><br>'
+                    '🎯 Score: <strong>{}</strong>',
+                    obj.rank,
+                    obj.collection_run.id,
+                    obj.score
+                )
+            )
+
+    def get_urls(self):
+        """Add custom URLs for translation dashboard."""
+        urls = super().get_urls()
+        custom_urls = get_translation_dashboard_urls(self.admin_site)
+        return custom_urls + urls
+
+
+# Apply translation actions to TrendClusterAdmin
+add_translation_actions_to_admin(TrendClusterAdmin)
 
 
 @admin.register(CrawlerSource)

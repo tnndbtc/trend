@@ -160,6 +160,17 @@ class FilteredTopicListView(ListView):
         # Add filter statistics
         context['filter_stats'] = self._get_filter_statistics()
 
+        # Server-side translation for filtered topics
+        target_lang = getattr(self.request, 'LANGUAGE_CODE', 'en')
+        context['current_lang'] = target_lang
+
+        if target_lang != 'en' and 'topics' in context:
+            topics_list = list(context['topics'])
+            if topics_list:
+                from .views import translate_topics_batch
+                logger.info(f"Batch translating {len(topics_list)} filtered topics to {target_lang}")
+                translate_topics_batch(topics_list, target_lang, self.request.session)
+
         return context
 
     def _get_filter_statistics(self) -> Dict[str, Any]:
@@ -350,6 +361,24 @@ class FilteredTrendListView(ListView):
             context['current_run'] = CollectionRun.objects.filter(status='completed').first()
 
         context['all_runs'] = CollectionRun.objects.all()[:10]
+
+        # Server-side translation for filtered trends
+        target_lang = getattr(self.request, 'LANGUAGE_CODE', 'en')
+        context['current_lang'] = target_lang
+
+        if target_lang != 'en' and 'trends' in context:
+            trends_list = list(context['trends'])
+            if trends_list:
+                from .views import translate_trends_batch, translate_topics_batch
+                logger.info(f"Batch translating {len(trends_list)} filtered trends to {target_lang}")
+                translate_trends_batch(trends_list, target_lang, self.request.session)
+
+                # Also translate topics within each trend
+                for trend in trends_list:
+                    if hasattr(trend, 'filtered_topics'):
+                        topics = list(trend.filtered_topics)
+                        if topics:
+                            translate_topics_batch(topics, target_lang, self.request.session)
 
         return context
 

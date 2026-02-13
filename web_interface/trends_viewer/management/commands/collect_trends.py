@@ -130,6 +130,63 @@ def apply_source_diversity_limit(ranked_topics, max_total, max_percentage_per_so
     return selected
 
 
+def balance_categories(clusters, cluster_category_names, min_per_category=10, max_percentage=0.50):
+    """
+    Balance category distribution to prevent any category from dominating.
+
+    Ensures each category has a minimum number of posts and no category
+    exceeds a maximum percentage of total posts.
+
+    Args:
+        clusters: List of topic clusters (one per category)
+        cluster_category_names: List of category names corresponding to clusters
+        min_per_category: Minimum posts each category should have (default: 10)
+        max_percentage: Maximum percentage any category can have (default: 0.50 = 50%)
+
+    Returns:
+        Tuple of (balanced_clusters, balanced_category_names)
+    """
+    if not clusters:
+        return clusters, cluster_category_names
+
+    # Calculate total posts and current distribution
+    total_posts = sum(len(cluster) for cluster in clusters)
+    max_per_category = max(1, int(total_posts * max_percentage))
+
+    balanced_clusters = []
+    balanced_names = []
+
+    # Track statistics for logging
+    categories_trimmed = []
+    categories_below_min = []
+
+    for cluster, cat_name in zip(clusters, cluster_category_names):
+        cluster_size = len(cluster)
+
+        # Check if this category is below minimum
+        if cluster_size < min_per_category:
+            categories_below_min.append((cat_name, cluster_size))
+
+        # Trim categories that exceed maximum
+        if cluster_size > max_per_category:
+            # Rank topics by engagement before trimming
+            ranked = rank_topics(cluster)
+            trimmed_cluster = ranked[:max_per_category]
+            balanced_clusters.append(trimmed_cluster)
+            balanced_names.append(cat_name)
+            categories_trimmed.append((cat_name, cluster_size, max_per_category))
+        else:
+            balanced_clusters.append(cluster)
+            balanced_names.append(cat_name)
+
+    return balanced_clusters, balanced_names, {
+        'trimmed': categories_trimmed,
+        'below_min': categories_below_min,
+        'total_before': total_posts,
+        'total_after': sum(len(c) for c in balanced_clusters)
+    }
+
+
 class Command(BaseCommand):
     help = 'Collect and analyze trending topics from multiple sources'
 
@@ -236,6 +293,19 @@ class Command(BaseCommand):
         self.stdout.write(f'   Created {len(clusters)} clusters')
         for i, (cat_name, cluster) in enumerate(zip(cluster_category_names, clusters), 1):
             self.stdout.write(f'   {i}. {cat_name}: {len(cluster)} posts')
+
+        # Step 4.5: Balance categories to prevent domination
+        self.stdout.write('⚖️  Balancing category distribution...')
+        clusters, cluster_category_names, balance_stats = balance_categories(
+            clusters, cluster_category_names, min_per_category=5, max_percentage=0.50
+        )
+        if balance_stats['trimmed']:
+            for cat_name, before, after in balance_stats['trimmed']:
+                self.stdout.write(f'   ✂️  {cat_name}: trimmed from {before} to {after} posts (max 50%)')
+        if balance_stats['below_min']:
+            for cat_name, count in balance_stats['below_min']:
+                self.stdout.write(f'   ⚠️  {cat_name}: only {count} posts (below minimum of 5)')
+        self.stdout.write(f'   Total posts: {balance_stats["total_before"]} → {balance_stats["total_after"]}')
 
         # Step 5: Deduplicate within each category and select top N posts
         self.stdout.write(f'📊 Deduplicating and selecting top {max_posts_per_category} posts from each category...')
@@ -514,3 +584,39 @@ class Command(BaseCommand):
         await sync_to_async(collection_run.save)()
 
         self.stdout.write(self.style.SUCCESS('✨ Analysis complete!'))
+
+        # ============================================================================
+        # POST-CRAWL HOOK: Automatic Pre-Translation
+        # ============================================================================
+        from django.conf import settings
+
+        if settings.AUTO_TRANSLATE_ENABLED and settings.AUTO_TRANSLATE_LANGUAGES:
+            self.stdout.write(self.style.SUCCESS('\n🌐 Starting automatic pre-translation...'))
+
+            # Get newly created trends from this crawl
+            new_trends = await sync_to_async(list)(
+                TrendCluster.objects.filter(collection_run=collection_run)
+            )
+            new_trend_ids = [trend.id for trend in new_trends]
+
+            if new_trend_ids:
+                from trends_viewer.tasks import pre_translate_trends
+
+                for lang in settings.AUTO_TRANSLATE_LANGUAGES:
+                    self.stdout.write(f'  → Queuing translation to {lang} for {len(new_trend_ids)} trends')
+
+                    # Queue background translation task (fire-and-forget)
+                    pre_translate_trends.apply_async((new_trend_ids, lang), ignore_result=True)
+
+                self.stdout.write(self.style.SUCCESS(
+                    f'✓ Queued pre-translation for {len(new_trend_ids)} trends '
+                    f'in {len(settings.AUTO_TRANSLATE_LANGUAGES)} language(s)'
+                ))
+                self.stdout.write('  Translations will complete in background.')
+            else:
+                self.stdout.write('  No new trends to translate.')
+        else:
+            if not settings.AUTO_TRANSLATE_ENABLED:
+                self.stdout.write('  ⚠ Auto-translation disabled in settings')
+            elif not settings.AUTO_TRANSLATE_LANGUAGES:
+                self.stdout.write('  ⚠ No languages configured for auto-translation')

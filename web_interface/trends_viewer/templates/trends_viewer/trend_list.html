@@ -21,7 +21,7 @@
             </div>
             <div style="flex: 1;">
                 <h3 style="margin-bottom: 0.75rem;">
-                    <a href="{% url 'trends_viewer:trend_detail' trend.pk %}" style="color: #2c3e50; text-decoration: none;" data-field="title">
+                    <a href="{% url 'trends_viewer:trend_detail' trend.pk %}?lang={{ current_lang }}" style="color: #2c3e50; text-decoration: none;" data-field="title">
                         {{ trend.title }}
                     </a>
                 </h3>

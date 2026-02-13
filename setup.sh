@@ -552,6 +552,7 @@ manage_services() {
     echo "6) Stop Monitoring"
     echo "7) Start ALL Optional Services"
     echo "8) Stop ALL Services"
+    echo "9) Restart ALL Services (no rebuild)"
     echo "0) Back to Main Menu"
     echo ""
     echo -n "Select an option: "
@@ -604,6 +605,15 @@ manage_services() {
             else
                 print_info "Cancelled"
             fi
+            ;;
+        9)
+            print_info "Restarting all services (no rebuild)..."
+            $DOCKER_COMPOSE restart
+            print_success "All services restarted"
+            echo ""
+            print_info "Waiting for services to be healthy..."
+            sleep 5
+            show_all_urls
             ;;
         0)
             return 0

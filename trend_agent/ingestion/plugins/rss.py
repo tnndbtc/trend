@@ -73,6 +73,22 @@ class RSSCollector(CollectorPlugin):
             # Science
             "https://www.sciencedaily.com/rss/all.xml",
             "https://www.scientificamerican.com/feed/",
+            # Entertainment - Movies & TV
+            "https://variety.com/feed/",
+            "https://www.hollywoodreporter.com/feed/",
+            "https://deadline.com/feed/",
+            "https://ew.com/feed/",
+            # Entertainment - Music
+            "https://www.billboard.com/feed/",
+            "https://www.rollingstone.com/feed/",
+            "https://pitchfork.com/rss/news/",
+            # Entertainment - Gaming
+            "https://www.ign.com/articles?tags=news",
+            "https://www.polygon.com/rss/index.xml",
+            "https://kotaku.com/rss",
+            # Entertainment - General Pop Culture
+            "https://www.vulture.com/feed/",
+            "https://www.avclub.com/rss",
         ]
 
     async def collect(self) -> List[RawItem]:

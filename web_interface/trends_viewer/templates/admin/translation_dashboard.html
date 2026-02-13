@@ -1,0 +1,114 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Translation Dashboard{% endblock %}
+
+{% block content %}
+<h1>🌐 Translation Dashboard</h1>
+
+<div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+    <h2 style="margin-top: 0;">📊 Translation Coverage</h2>
+
+    {% if auto_translate_enabled %}
+    <p style="background: #d4edda; padding: 10px; border-radius: 4px; border-left: 4px solid #28a745;">
+        <strong>✓ Auto-Translation Enabled</strong><br>
+        Automatic: {{ auto_translate_languages|join:", " }}
+    </p>
+    {% else %}
+    <p style="background: #fff3cd; padding: 10px; border-radius: 4px; border-left: 4px solid #ffc107;">
+        <strong>⚠ Auto-Translation Disabled</strong><br>
+        Enable in settings: <code>AUTO_TRANSLATE_ENABLED = True</code>
+    </p>
+    {% endif %}
+
+    <table style="width: 100%; margin-top: 20px; border-collapse: collapse;">
+        <thead>
+            <tr style="background: #e9ecef;">
+                <th style="padding: 12px; text-align: left;">Language</th>
+                <th style="padding: 12px; text-align: center;">Translated</th>
+                <th style="padding: 12px; text-align: center;">Coverage</th>
+                <th style="padding: 12px; text-align: center;">Untranslated</th>
+                <th style="padding: 12px; text-align: center;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for lang_code, lang_data in stats.items %}
+            <tr style="border-bottom: 1px solid #dee2e6;">
+                <td style="padding: 12px;"><strong>{{ lang_data.name }}</strong></td>
+                <td style="padding: 12px; text-align: center;">{{ lang_data.translated }}</td>
+                <td style="padding: 12px; text-align: center;">
+                    <div style="background: #e9ecef; height: 20px; border-radius: 10px; position: relative;">
+                        <div style="background: {% if lang_data.coverage >= 80 %}#28a745{% elif lang_data.coverage >= 50 %}#ffc107{% else %}#dc3545{% endif %};
+                                    height: 100%; width: {{ lang_data.coverage }}%; border-radius: 10px;">
+                        </div>
+                        <span style="position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+                                     font-size: 12px; font-weight: bold;">
+                            {{ lang_data.coverage|floatformat:1 }}%
+                        </span>
+                    </div>
+                </td>
+                <td style="padding: 12px; text-align: center;">{{ lang_data.untranslated }}</td>
+                <td style="padding: 12px; text-align: center;">
+                    {% if lang_data.untranslated > 0 %}
+                    <form method="post" action="{% url 'admin:bulk_translate' %}" style="display: inline;">
+                        {% csrf_token %}
+                        <input type="hidden" name="language" value="{{ lang_code }}">
+                        <button type="submit" style="background: #007bff; color: white; border: none;
+                                                      padding: 6px 12px; border-radius: 4px; cursor: pointer;">
+                            Translate {{ lang_data.untranslated }} trends
+                        </button>
+                    </form>
+                    {% else %}
+                    <span style="color: #28a745;">✓ Complete</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+    <h2 style="margin-top: 0;">📅 Recent Translations (Last 24 hours)</h2>
+
+    {% if recent_translations %}
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr style="background: #e9ecef;">
+                <th style="padding: 12px; text-align: left;">Trend</th>
+                <th style="padding: 12px; text-align: center;">Language</th>
+                <th style="padding: 12px; text-align: center;">Topics</th>
+                <th style="padding: 12px; text-align: center;">Translated At</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for status in recent_translations %}
+            <tr style="border-bottom: 1px solid #dee2e6;">
+                <td style="padding: 12px;">
+                    <a href="{% url 'admin:trends_viewer_trendcluster_change' status.trend.id %}">
+                        #{{ status.trend.id }}: {{ status.trend.title|truncatewords:10 }}
+                    </a>
+                </td>
+                <td style="padding: 12px; text-align: center;">{{ status.language|upper }}</td>
+                <td style="padding: 12px; text-align: center;">{{ status.topics_count }}</td>
+                <td style="padding: 12px; text-align: center;">{{ status.translated_at|date:"Y-m-d H:i" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="text-align: center; color: #666; padding: 40px;">
+        No translations in the last 24 hours.
+    </p>
+    {% endif %}
+</div>
+
+<div style="margin-top: 20px;">
+    <a href="{% url 'admin:trends_viewer_trendcluster_changelist' %}"
+       style="background: #6c757d; color: white; padding: 10px 20px; text-decoration: none;
+              border-radius: 4px; display: inline-block;">
+        ← Back to Trends
+    </a>
+</div>
+
+{% endblock %}

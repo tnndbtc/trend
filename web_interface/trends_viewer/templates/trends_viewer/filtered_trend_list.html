@@ -62,7 +62,7 @@
                     </span>
                     <div style="flex: 1;">
                         <h3 style="margin: 0; font-size: 1.3rem; color: #2c3e50;">
-                            <a href="{% url 'trends_viewer:trend_detail' trend.pk %}" style="color: #2c3e50; text-decoration: none;">
+                            <a href="{% url 'trends_viewer:trend_detail' trend.pk %}?lang={{ current_lang }}" style="color: #2c3e50; text-decoration: none;">
                                 {{ trend.title }}
                             </a>
                         </h3>
@@ -137,7 +137,7 @@
             <!-- View All Topics Link -->
             {% if trend.filtered_topic_count < trend.topics.count %}
             <div style="margin-top: 1rem; text-align: center; padding-top: 1rem; border-top: 1px solid #ddd;">
-                <a href="{% url 'trends_viewer:trend_detail' trend.pk %}" style="color: #3498db; text-decoration: none; font-weight: 600;">
+                <a href="{% url 'trends_viewer:trend_detail' trend.pk %}?lang={{ current_lang }}" style="color: #3498db; text-decoration: none; font-weight: 600;">
                     View all {{ trend.topics.count }} topics in this trend →
                 </a>
             </div>

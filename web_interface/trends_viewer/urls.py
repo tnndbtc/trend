@@ -25,7 +25,6 @@ urlpatterns = [
 
     # Translation provider toggle (Session D)
     path('api/translation/provider/', views.set_translation_provider, name='set_translation_provider'),
-    path('api/translation/trends/', views.get_trend_translations, name='get_trend_translations'),
 
     # Authentication (Phase 2)
     path('register/', views_auth.register_view, name='register'),

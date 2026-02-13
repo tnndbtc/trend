@@ -113,3 +113,89 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'  # Directory for collectstatic
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# ============================================================================
+# AUTO-TRANSLATION SETTINGS
+# ============================================================================
+
+# Enable automatic pre-translation after crawls
+# When enabled, newly collected trends are automatically translated in background
+AUTO_TRANSLATE_ENABLED = os.getenv('AUTO_TRANSLATE_ENABLED', 'true').lower() == 'true'
+
+# Languages to automatically pre-translate
+# Trends will be translated to these languages after each crawl
+AUTO_TRANSLATE_LANGUAGES = [
+    lang.strip()
+    for lang in os.getenv('AUTO_TRANSLATE_LANGUAGES', 'zh').split(',')
+]
+
+# Only translate new trends (created in current crawl)
+# If False, will translate all trends
+AUTO_TRANSLATE_NEW_TRENDS_ONLY = os.getenv('AUTO_TRANSLATE_NEW_TRENDS_ONLY', 'true').lower() == 'true'
+
+# Maximum daily translation cost limit in USD
+# Translation tasks will be paused if daily cost exceeds this limit
+MAX_DAILY_TRANSLATION_COST = float(os.getenv('MAX_DAILY_TRANSLATION_COST', '50.0'))
+
+# Priority languages for translation (shown first in admin)
+TRANSLATION_PRIORITY_LANGUAGES = [
+    ('zh', 'Chinese (Simplified)'),
+    ('es', 'Spanish'),
+    ('fr', 'French'),
+    ('de', 'German'),
+    ('ja', 'Japanese'),
+    ('ko', 'Korean'),
+    ('ru', 'Russian'),
+    ('ar', 'Arabic'),
+]
+
+
+# ==============================================================================
+# CELERY CONFIGURATION
+# ==============================================================================
+# Celery broker (RabbitMQ) configuration
+CELERY_BROKER_URL = f"amqp://{os.getenv('RABBITMQ_USER', 'trend_user')}:{os.getenv('RABBITMQ_PASSWORD', 'trend_password')}@{os.getenv('RABBITMQ_HOST', 'rabbitmq')}:{os.getenv('RABBITMQ_PORT', '5672')}//"
+
+# Celery result backend (use RabbitMQ for simplicity and reliability)
+# RabbitMQ avoids Redis authentication issues and provides better reliability
+CELERY_RESULT_BACKEND = f"rpc://"
+
+# Celery task configuration
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+CELERY_ENABLE_UTC = True
+
+# Task time limits (10 minutes soft, 15 minutes hard)
+CELERY_TASK_SOFT_TIME_LIMIT = 600
+CELERY_TASK_TIME_LIMIT = 900
+
+# Task result expiration (7 days)
+CELERY_RESULT_EXPIRES = 60 * 60 * 24 * 7
+
+# Worker configuration
+CELERY_WORKER_PREFETCH_MULTIPLIER = 4
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
+
+# Task routing
+CELERY_TASK_ROUTES = {
+    'trends_viewer.tasks.pre_translate_trends': {'queue': 'translation'},
+    'trends_viewer.tasks.bulk_translate_all_trends': {'queue': 'translation'},
+    'trends_viewer.tasks.translate_single_trend': {'queue': 'translation'},
+}
+
+# Default queue
+CELERY_TASK_DEFAULT_QUEUE = 'default'
+
+# Disable eager result consumption (prevents auth issues with Redis)
+CELERY_TASK_IGNORE_RESULT = False
+CELERY_TASK_TRACK_STARTED = True
+CELERY_RESULT_PERSISTENT = True
+
+# Result backend configuration for better reliability
+CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {
+    'master_name': 'mymaster',
+}
+CELERY_REDIS_BACKEND_USE_SSL = False

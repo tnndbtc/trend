@@ -1,0 +1,60 @@
+{% extends "admin/base_site.html" %}
+
+{% block title %}Translate Trends{% endblock %}
+
+{% block content %}
+<h1>🌐 Translate {{ trend_count }} Trend{{ trend_count|pluralize }}</h1>
+
+<form method="post">
+    {% csrf_token %}
+
+    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <h3>Select Target Language:</h3>
+
+        <select name="target_language" style="width: 100%; padding: 10px; font-size: 16px;
+                                                border: 1px solid #ced4da; border-radius: 4px;" required>
+            <option value="">-- Select Language --</option>
+            {% for lang_code, lang_name in priority_languages %}
+            <option value="{{ lang_code }}">{{ lang_name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div style="background: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+        <strong>ℹ️ Note:</strong>
+        <ul style="margin: 10px 0;">
+            <li>Translation will happen in the background</li>
+            <li>Each trend and its topics will be translated</li>
+            <li>Check back in a few minutes for completion</li>
+            <li>Estimated time: {{ trend_count }} trend{{ trend_count|pluralize }} × 5 seconds = ~{{ trend_count|mul:5|div:60 }} minute{{ trend_count|mul:5|div:60|pluralize }}</li>
+        </ul>
+    </div>
+
+    <div style="background: #e7f3ff; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+        <h4 style="margin-top: 0;">Trends to translate:</h4>
+        <ul>
+            {% for trend in queryset|slice:":10" %}
+            <li>{{ trend.title }}</li>
+            {% endfor %}
+            {% if trend_count > 10 %}
+            <li><em>...and {{ trend_count|add:"-10" }} more</em></li>
+            {% endif %}
+        </ul>
+    </div>
+
+    <div style="display: flex; gap: 10px;">
+        <button type="submit" name="apply"
+                style="background: #28a745; color: white; padding: 12px 24px;
+                       border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
+            ✓ Start Translation
+        </button>
+
+        <a href="{% url 'admin:trends_viewer_trendcluster_changelist' %}"
+           style="background: #6c757d; color: white; padding: 12px 24px;
+                  text-decoration: none; border-radius: 4px; display: inline-block;">
+            Cancel
+        </a>
+    </div>
+</form>
+
+{% endblock %}

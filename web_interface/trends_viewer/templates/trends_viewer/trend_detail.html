@@ -5,23 +5,23 @@
 
 {% block content %}
 <div style="margin-bottom: 1rem;">
-    <a href="{% url 'trends_viewer:trend_list' %}" style="color: #3498db; text-decoration: none;">&larr; Back to Trends</a>
+    <a href="{% url 'trends_viewer:trend_list' %}?lang={{ current_lang }}" style="color: #3498db; text-decoration: none;">&larr; Back to Trends</a>
 </div>
 
-<div class="card" data-trend-id="{{ trend.id }}" data-original-title="{{ trend.title }}" data-original-summary="{{ trend.summary }}">
+<div class="card" data-trend-id="{{ trend.id }}">
     <div style="display: flex; align-items: start; gap: 1.5rem; margin-bottom: 1.5rem;">
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; min-width: 80px; height: 80px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 2rem; font-weight: bold;">
             #{{ trend.rank }}
         </div>
         <div style="flex: 1;">
-            <h2 style="margin-bottom: 1rem;" data-field="title">{{ trend.title }}</h2>
+            <h2 style="margin-bottom: 1rem;">{{ trend.title }}</h2>
             <div style="display: flex; gap: 1.5rem; align-items: center; font-size: 0.875rem; color: #666; margin-bottom: 1rem;">
                 <span>📊 Score: {{ trend.score|floatformat:0 }}</span>
                 <span>📰 {{ topics.count }} topic{{ topics.count|pluralize }}</span>
                 <span>📅 {{ trend.created_at|date:"Y-m-d H:i" }}</span>
             </div>
             <div style="padding: 1rem; background: #f8f9fa; border-left: 4px solid #3498db; border-radius: 4px;">
-                <p style="line-height: 1.6; color: #333;" data-field="summary">{{ trend.summary }}</p>
+                <p style="line-height: 1.6; color: #333;">{{ trend.summary }}</p>
             </div>
         </div>
     </div>
@@ -36,7 +36,7 @@
         <div data-topic-id="{{ topic.id }}" style="padding: 1rem; background: #f8f9fa; border-radius: 8px; border-left: 4px solid {% if topic.source == 'reddit' %}#ff4500{% elif topic.source == 'hackernews' %}#ff6600{% else %}#4285f4{% endif %};">
             <div style="display: flex; align-items: start; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem;">
                 <h4 style="flex: 1; font-size: 1rem;">
-                    <a href="{{ topic.url }}" target="_blank" rel="noopener noreferrer" style="color: #2c3e50; text-decoration: none;" data-field="topic-title">
+                    <a href="{{ topic.url }}" target="_blank" rel="noopener noreferrer" style="color: #2c3e50; text-decoration: none;">
                         {{ topic.title }}
                     </a>
                 </h4>
@@ -44,7 +44,7 @@
             </div>
 
             {% if topic.description %}
-            <p style="color: #666; font-size: 0.875rem; margin-bottom: 0.75rem; line-height: 1.5;" data-field="topic-description">
+            <p style="color: #666; font-size: 0.875rem; margin-bottom: 0.75rem; line-height: 1.5;">
                 {{ topic.description|truncatewords:50 }}
             </p>
             {% endif %}
@@ -68,40 +68,5 @@
     <p style="text-align: center; color: #666; padding: 2rem;">No topics found for this trend.</p>
     {% endif %}
 </div>
-
-<script>
-    /**
-     * Lazy Translation on Page Load
-     *
-     * If a non-English language is requested via URL parameter,
-     * this will automatically load translations client-side after
-     * the English page loads (for optimal performance).
-     */
-    document.addEventListener('DOMContentLoaded', function() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const requestedLang = urlParams.get('lang');
-
-        // If a non-English language is requested
-        if (requestedLang && requestedLang !== 'en') {
-            console.log(`[LazyTranslation] Detected language request: ${requestedLang}`);
-
-            // First, check localStorage cache
-            const cachedTranslations = TranslationCache.get(requestedLang);
-
-            if (cachedTranslations && Object.keys(cachedTranslations).length > 0) {
-                // Apply cached translations immediately
-                console.log(`[LazyTranslation] Using cached translations for ${requestedLang}`);
-                applyTranslations(cachedTranslations, requestedLang);
-            } else {
-                // Show loading indicator
-                showToast(`Loading ${getLanguageName(requestedLang)} translations...`, 5000);
-
-                // Fetch and apply translations
-                console.log(`[LazyTranslation] Fetching translations for ${requestedLang}`);
-                fetchAndApplyTranslations(requestedLang);
-            }
-        }
-    });
-</script>
 
 {% endblock %}

@@ -161,6 +161,87 @@ services:
     networks:
       - trend-network
 
+  # Django Web Interface Celery Workers (separate from FastAPI workers above)
+  web-celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trend-web-celery-worker
+    volumes:
+      - .:/app
+      - ./data/cache:/root/.cache
+    env_file:
+      - .env.docker
+    environment:
+      - PYTHONPATH=/app
+      - DJANGO_SETTINGS_MODULE=web_interface.settings
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-trends}
+      - POSTGRES_USER=${POSTGRES_USER:-trend_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-trend_password}
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=${RABBITMQ_USER:-trend_user}
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-trend_password}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - TRANSFORMERS_CACHE=/root/.cache/huggingface
+      - SENTENCE_TRANSFORMERS_HOME=/root/.cache/sentence-transformers
+      # Translation API keys
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DEEPL_API_KEY=${DEEPL_API_KEY:-}
+    command: celery -A web_interface worker --loglevel=info --queues=translation,default --concurrency=2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - trend-network
+
+  web-celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trend-web-celery-beat
+    volumes:
+      - .:/app
+    env_file:
+      - .env.docker
+    environment:
+      - PYTHONPATH=/app
+      - DJANGO_SETTINGS_MODULE=web_interface.settings
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-trends}
+      - POSTGRES_USER=${POSTGRES_USER:-trend_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-trend_password}
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=${RABBITMQ_USER:-trend_user}
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-trend_password}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    command: celery -A web_interface beat --loglevel=info
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - trend-network
+
   # ============================================================================
   # Storage Layer Services (Session 1)
   # ============================================================================

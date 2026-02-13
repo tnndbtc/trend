@@ -320,104 +320,6 @@ def set_translation_provider(request):
         }, status=500)
 
 
-def get_trend_translations(request):
-    """
-    AJAX endpoint to get translations for trends.
-
-    Accepts GET parameters:
-        - trend_ids: Comma-separated list of trend IDs
-        - lang: Target language code (e.g., 'zh', 'es', 'fr')
-
-    Returns:
-        JsonResponse with translations for each trend
-    """
-    try:
-        # Get parameters
-        trend_ids_str = request.GET.get('trend_ids', '')
-        target_lang = request.GET.get('lang', 'en')
-
-        if not trend_ids_str:
-            return JsonResponse({
-                'status': 'error',
-                'message': 'trend_ids parameter is required'
-            }, status=400)
-
-        # Parse trend IDs
-        try:
-            trend_ids = [int(id.strip()) for id in trend_ids_str.split(',') if id.strip()]
-        except ValueError:
-            return JsonResponse({
-                'status': 'error',
-                'message': 'Invalid trend_ids format'
-            }, status=400)
-
-        if not trend_ids:
-            return JsonResponse({
-                'status': 'error',
-                'message': 'No valid trend IDs provided'
-            }, status=400)
-
-        # Fetch trends with prefetch topics for detail pages
-        trends = list(TrendCluster.objects.filter(id__in=trend_ids).prefetch_related('topics'))
-
-        if not trends:
-            return JsonResponse({
-                'status': 'error',
-                'message': 'No trends found'
-            }, status=404)
-
-        # Translate trends (batch translation for performance)
-        if target_lang != 'en':
-            logger.info(f"API: Batch translating {len(trends)} trends to {target_lang}")
-            translate_trends_batch(trends, target_lang, request.session)
-
-            # Also translate topics for detail pages
-            all_topics = []
-            for trend in trends:
-                all_topics.extend(list(trend.topics.all()))
-
-            if all_topics:
-                logger.info(f"API: Batch translating {len(all_topics)} topics to {target_lang}")
-                translate_topics_batch(all_topics, target_lang, request.session)
-
-        # Build response
-        translations = {}
-        for trend in trends:
-            # Translate topics if any
-            topics_data = []
-            for topic in trend.topics.all():
-                topics_data.append({
-                    'id': topic.id,
-                    'title': topic.title,
-                    'description': topic.description or '',
-                    'is_translated': getattr(topic, 'is_translated', False)
-                })
-
-            translations[str(trend.id)] = {
-                'id': trend.id,
-                'title': trend.title,
-                'summary': trend.summary,
-                'full_summary': trend.full_summary,
-                'topics': topics_data,
-                'is_translated': getattr(trend, 'is_translated', False),
-                'translation_lang': getattr(trend, 'translation_lang', 'en')
-            }
-
-        return JsonResponse({
-            'status': 'success',
-            'language': target_lang,
-            'count': len(translations),
-            'translations': translations
-        })
-
-    except Exception as e:
-        logger.error(f"Error in get_trend_translations: {e}")
-        return JsonResponse({
-            'status': 'error',
-            'message': str(e)
-        }, status=500)
-
-
 def translate_trend(trend, target_lang='zh', session=None):
     """
     Translate a TrendCluster object to target language.
@@ -680,41 +582,26 @@ class TrendDetailView(DetailView):
         topics_list = list(self.object.topics.all())
         context['topics'] = topics_list
 
-        # PERFORMANCE OPTIMIZATION: Skip server-side translation
-        # Let client-side JavaScript handle translation for better performance
-        #
-        # Benefits:
-        # 1. Fast initial page load (English always loads quickly)
-        # 2. Translations load progressively in background
-        # 3. Uses localStorage cache for instant subsequent visits
-        # 4. No redundant server-side cache lookups (33+ per request)
-        #
-        # The lazy translation JavaScript in trend_detail.html will:
-        # - Check localStorage cache first (instant if cached)
-        # - Fetch translations via AJAX if needed
-        # - Apply translations client-side
-        #
-        # NOTE: If you want server-side translation (slower but works without JS),
-        # uncomment the code below:
-        #
-        # if target_lang != 'en':
-        #     cached_context = get_cached_translation_context(self.object.id, target_lang)
-        #     if cached_context:
-        #         logger.info(f"✅ Cache HIT: Using cached translation for trend {self.object.id} ({target_lang})")
-        #         context['trend'] = cached_context['trend']
-        #         context['topics'] = cached_context['topics']
-        #         return context
-        #
-        #     logger.info(f"⚠️  Cache MISS: Translating trend {self.object.id} to {target_lang}")
-        #     translate_trends_batch([self.object], target_lang, self.request.session)
-        #     if topics_list:
-        #         translate_topics_batch(topics_list, target_lang, self.request.session)
-        #
-        #     translation_context = {
-        #         'trend': self.object,
-        #         'topics': topics_list
-        #     }
-        #     set_cached_translation_context(self.object.id, target_lang, translation_context)
+        # Server-side translation: Translate content before rendering
+        # No English flash - content loads directly in requested language
+        if target_lang != 'en':
+            cached_context = get_cached_translation_context(self.object.id, target_lang)
+            if cached_context:
+                logger.info(f"✅ Cache HIT: Using cached translation for trend {self.object.id} ({target_lang})")
+                context['trend'] = cached_context['trend']
+                context['topics'] = cached_context['topics']
+                return context
+
+            logger.info(f"⚠️  Cache MISS: Translating trend {self.object.id} to {target_lang}")
+            translate_trends_batch([self.object], target_lang, self.request.session)
+            if topics_list:
+                translate_topics_batch(topics_list, target_lang, self.request.session)
+
+            translation_context = {
+                'trend': self.object,
+                'topics': topics_list
+            }
+            set_cached_translation_context(self.object.id, target_lang, translation_context)
 
         return context
 

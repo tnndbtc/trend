@@ -209,3 +209,75 @@ class NotificationPreferenceForm(forms.ModelForm):
             'min_trend_score': forms.NumberInput(attrs={'class': 'form-input'}),
             'min_topic_count': forms.NumberInput(attrs={'class': 'form-input'}),
         }
+
+
+# ============================================================================
+# TrendCluster Admin Form (Simplified for manual entry)
+# ============================================================================
+
+class TrendClusterAdminForm(forms.ModelForm):
+    """
+    Simplified form for manually adding trends in the admin interface.
+
+    Only shows essential fields to users - technical fields are auto-populated.
+    """
+
+    class Meta:
+        from .models import TrendCluster
+        model = TrendCluster
+        fields = '__all__'
+        widgets = {
+            'title': forms.TextInput(attrs={
+                'class': 'vTextField',
+                'placeholder': 'e.g., "Finance Industry Embraces AI Trading"',
+                'style': 'width: 100%;'
+            }),
+            'summary': forms.Textarea(attrs={
+                'class': 'vLargeTextField',
+                'placeholder': 'Enter a detailed summary of this trend...',
+                'rows': 6,
+                'style': 'width: 100%;'
+            }),
+            'language': forms.Select(attrs={'class': 'vTextField'}),
+            'title_summary': forms.TextInput(attrs={
+                'class': 'vTextField',
+                'placeholder': 'Short version of title (leave blank to auto-fill)',
+                'style': 'width: 100%;'
+            }),
+            'full_summary': forms.Textarea(attrs={
+                'class': 'vLargeTextField',
+                'placeholder': 'Extended summary (leave blank to auto-fill)',
+                'rows': 4,
+                'style': 'width: 100%;'
+            }),
+        }
+        help_texts = {
+            'title': 'The main title of the trend (required)',
+            'summary': 'A comprehensive description of what this trend is about (required)',
+            'language': 'Primary language of this trend content (defaults to English)',
+            'title_summary': 'Leave blank to auto-fill with title',
+            'full_summary': 'Leave blank to auto-fill with summary',
+            'collection_run': 'Auto-assigned to latest collection run (optional - can override)',
+            'rank': 'Auto-assigned as next available number (optional - can override)',
+            'score': 'Auto-assigned default value of 1.0 (optional - can override)',
+        }
+
+    def __init__(self, *args, **kwargs):
+        """
+        Make auto-populated fields optional for new objects.
+
+        This allows form validation to pass, then save_model()
+        can populate these fields automatically.
+        """
+        super().__init__(*args, **kwargs)
+
+        # For new objects (no pk yet), make auto-populated fields optional
+        if not self.instance.pk:
+            self.fields['collection_run'].required = False
+            self.fields['rank'].required = False
+            self.fields['score'].required = False
+
+            # Provide helpful placeholder values
+            self.fields['collection_run'].empty_label = "Auto-assign to latest collection run"
+            self.fields['rank'].help_text = "Leave blank to auto-assign next available rank"
+            self.fields['score'].help_text = "Leave blank to auto-assign default score (1.0)"

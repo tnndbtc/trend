@@ -91,7 +91,7 @@
                     {% if topic.cluster %}
                     <span>
                         📊 Trend #{{ topic.cluster.rank }}:
-                        <a href="{% url 'trends_viewer:trend_detail' topic.cluster.pk %}" style="color: #3498db;">
+                        <a href="{% url 'trends_viewer:trend_detail' topic.cluster.pk %}?lang={{ current_lang }}" style="color: #3498db;">
                             {{ topic.cluster.title|truncatewords:5 }}
                         </a>
                     </span>

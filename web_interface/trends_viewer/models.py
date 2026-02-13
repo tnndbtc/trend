@@ -61,6 +61,23 @@ class CollectedTopic(models.Model):
 
 class TrendCluster(models.Model):
     """Represents a cluster of related topics identified as a trend."""
+
+    # Language choices for better UX in admin
+    LANGUAGE_CHOICES = [
+        ('en', 'English'),
+        ('zh', 'Chinese (中文)'),
+        ('es', 'Spanish (Español)'),
+        ('fr', 'French (Français)'),
+        ('de', 'German (Deutsch)'),
+        ('ja', 'Japanese (日本語)'),
+        ('ko', 'Korean (한국어)'),
+        ('pt', 'Portuguese (Português)'),
+        ('ru', 'Russian (Русский)'),
+        ('ar', 'Arabic (العربية)'),
+        ('it', 'Italian (Italiano)'),
+        ('hi', 'Hindi (हिन्दी)'),
+    ]
+
     collection_run = models.ForeignKey(CollectionRun, on_delete=models.CASCADE, related_name='clusters')
     rank = models.IntegerField()
     title = models.CharField(max_length=500)
@@ -69,9 +86,14 @@ class TrendCluster(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
 
     # Language and structured summaries
-    language = models.CharField(max_length=10, default='en')
-    title_summary = models.CharField(max_length=500, blank=True)
-    full_summary = models.TextField(blank=True)
+    language = models.CharField(
+        max_length=10,
+        default='en',
+        choices=LANGUAGE_CHOICES,
+        help_text='Primary language of this trend content'
+    )
+    title_summary = models.CharField(max_length=500, blank=True, default='')
+    full_summary = models.TextField(blank=True, default='')
 
     class Meta:
         ordering = ['rank']
@@ -471,6 +493,59 @@ class TranslatedContent(models.Model):
         return f"{self.source_language} → {self.target_language} ({self.provider}) - {self.source_text_hash[:8]}..."
 
 
+class TrendTranslationStatus(models.Model):
+    """
+    Track translation status for trends in different languages.
+
+    Used for:
+    - Automatic pre-translation after crawls
+    - Admin dashboard to show translation coverage
+    - Cost tracking per language
+    """
+    trend = models.ForeignKey(
+        TrendCluster,
+        on_delete=models.CASCADE,
+        related_name='translation_statuses'
+    )
+    language = models.CharField(
+        max_length=10,
+        help_text="Target language code (e.g., 'zh', 'es', 'fr')"
+    )
+    translated = models.BooleanField(
+        default=False,
+        help_text="Whether this trend has been fully translated to this language"
+    )
+    translated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the translation was completed"
+    )
+    translation_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        default=0,
+        help_text="Estimated API cost for this translation in USD"
+    )
+    topics_count = models.IntegerField(
+        default=0,
+        help_text="Number of topics translated"
+    )
+
+    class Meta:
+        db_table = 'trends_viewer_trendtranslationstatus'
+        verbose_name = "Trend Translation Status"
+        verbose_name_plural = "Trend Translation Statuses"
+        unique_together = ['trend', 'language']
+        indexes = [
+            models.Index(fields=['language', 'translated']),
+            models.Index(fields=['translated_at']),
+        ]
+
+    def __str__(self):
+        status = "✓" if self.translated else "✗"
+        return f"{status} Trend #{self.trend.id} → {self.language}"
+
+
 # Import SystemSettings from separate module
 from .models_system import SystemSettings
 
@@ -480,5 +555,6 @@ __all__ = [
     'TrendCluster',
     'CrawlerSource',
     'TranslatedContent',
+    'TrendTranslationStatus',
     'SystemSettings',
 ]
