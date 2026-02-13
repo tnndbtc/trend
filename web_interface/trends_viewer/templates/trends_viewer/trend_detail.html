@@ -8,7 +8,7 @@
     <a href="{% url 'trends_viewer:trend_list' %}" style="color: #3498db; text-decoration: none;">&larr; Back to Trends</a>
 </div>
 
-<div class="card" data-trend-id="{{ trend.id }}">
+<div class="card" data-trend-id="{{ trend.id }}" data-original-title="{{ trend.title }}" data-original-summary="{{ trend.summary }}">
     <div style="display: flex; align-items: start; gap: 1.5rem; margin-bottom: 1.5rem;">
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; min-width: 80px; height: 80px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 2rem; font-weight: bold;">
             #{{ trend.rank }}
@@ -68,5 +68,40 @@
     <p style="text-align: center; color: #666; padding: 2rem;">No topics found for this trend.</p>
     {% endif %}
 </div>
+
+<script>
+    /**
+     * Lazy Translation on Page Load
+     *
+     * If a non-English language is requested via URL parameter,
+     * this will automatically load translations client-side after
+     * the English page loads (for optimal performance).
+     */
+    document.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const requestedLang = urlParams.get('lang');
+
+        // If a non-English language is requested
+        if (requestedLang && requestedLang !== 'en') {
+            console.log(`[LazyTranslation] Detected language request: ${requestedLang}`);
+
+            // First, check localStorage cache
+            const cachedTranslations = TranslationCache.get(requestedLang);
+
+            if (cachedTranslations && Object.keys(cachedTranslations).length > 0) {
+                // Apply cached translations immediately
+                console.log(`[LazyTranslation] Using cached translations for ${requestedLang}`);
+                applyTranslations(cachedTranslations, requestedLang);
+            } else {
+                // Show loading indicator
+                showToast(`Loading ${getLanguageName(requestedLang)} translations...`, 5000);
+
+                // Fetch and apply translations
+                console.log(`[LazyTranslation] Fetching translations for ${requestedLang}`);
+                fetchAndApplyTranslations(requestedLang);
+            }
+        }
+    });
+</script>
 
 {% endblock %}

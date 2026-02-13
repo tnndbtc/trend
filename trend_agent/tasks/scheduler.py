@@ -136,32 +136,138 @@ async def _health_check_async() -> Dict[str, Any]:
 
 
 @app.task(name="trend_agent.tasks.scheduler.cleanup_old_data_task")
-def cleanup_old_data_task(days: int = 30) -> Dict[str, Any]:
+def cleanup_old_data_task(days: int = None) -> Dict[str, Any]:
     """
     Clean up old data from the database.
 
     Removes:
-    - Trends older than N days in DEAD state
-    - Items older than N days
+    - CollectionRuns older than N days (from Django database)
+    - Trends older than N days in DEAD state (from PostgreSQL)
+    - Items older than N days (from PostgreSQL)
     - Old pipeline run logs
     - Expired cache entries
 
     Args:
-        days: Number of days to keep data
+        days: Number of days to keep data (default: read from SystemSettings)
 
     Returns:
         Dictionary with cleanup results
     """
-    logger.info(f"Starting cleanup of data older than {days} days")
+    # Import Django models
+    import os
+    import sys
+    import django
+
+    # Setup Django
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'web_interface.settings')
+    sys.path.insert(0, '/home/tnnd/data/code/trend')
+    django.setup()
+
+    from web_interface.trends_viewer.models_system import SystemSettings
+    from django.utils import timezone
+
+    # Load system settings
+    try:
+        settings = SystemSettings.load()
+
+        # Check if auto cleanup is enabled
+        if not settings.enable_auto_cleanup:
+            logger.info("Automatic cleanup is disabled in SystemSettings")
+            return {
+                "status": "skipped",
+                "reason": "auto_cleanup_disabled",
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
+        # Use configured retention days if not provided
+        if days is None:
+            days = settings.data_retention_days
+
+        logger.info(f"Starting cleanup of data older than {days} days (from SystemSettings)")
+
+    except Exception as e:
+        # Fallback to default if SystemSettings not available
+        logger.warning(f"Could not load SystemSettings: {e}. Using default retention of 7 days")
+        days = days or 7
 
     try:
-        result = asyncio.run(_cleanup_old_data_async(days))
-        logger.info(f"Cleanup complete: {result['items_deleted']} items deleted")
+        # 1. Clean up Django database (CollectionRuns)
+        django_result = _cleanup_django_database(days)
+
+        # 2. Clean up PostgreSQL database (trend_agent data)
+        postgres_result = asyncio.run(_cleanup_old_data_async(days))
+
+        # 3. Update SystemSettings with cleanup timestamp
+        try:
+            settings = SystemSettings.load()
+            settings.last_cleanup_at = timezone.now()
+            settings.total_records_cleaned += django_result.get('runs_deleted', 0)
+            settings.save()
+        except Exception as e:
+            logger.warning(f"Could not update cleanup timestamp: {e}")
+
+        # Combine results
+        result = {
+            "django_database": django_result,
+            "postgres_database": postgres_result,
+            "cutoff_days": days,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+        logger.info(
+            f"Cleanup complete: {django_result.get('runs_deleted', 0)} Django runs + "
+            f"{postgres_result.get('items_deleted', 0)} PostgreSQL items deleted"
+        )
         return result
 
     except Exception as e:
         logger.error(f"Cleanup failed: {e}")
         raise
+
+
+def _cleanup_django_database(days: int) -> Dict[str, Any]:
+    """
+    Clean up old CollectionRuns from Django SQLite database.
+
+    Args:
+        days: Number of days to keep
+
+    Returns:
+        Dictionary with cleanup results
+    """
+    from django.core.management import call_command
+    from io import StringIO
+    import re
+
+    logger.info(f"Cleaning up Django database (retention: {days} days)")
+
+    # Capture command output
+    output = StringIO()
+
+    try:
+        # Call the Django management command
+        call_command('clean_old_data', days=days, stdout=output)
+
+        # Parse output to get deleted count
+        output_text = output.getvalue()
+
+        # Extract numbers from output like "Deleted 5 old collection runs"
+        match = re.search(r'Deleted (\d+) old collection run', output_text)
+        runs_deleted = int(match.group(1)) if match else 0
+
+        return {
+            "runs_deleted": runs_deleted,
+            "output": output_text.strip(),
+            "success": True,
+        }
+
+    except Exception as e:
+        logger.error(f"Django database cleanup failed: {e}")
+        return {
+            "runs_deleted": 0,
+            "error": str(e),
+            "success": False,
+        }
 
 
 async def _cleanup_old_data_async(days: int) -> Dict[str, Any]:

@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 LOG_DIR="$PROJECT_DIR/logs"
 LOG_FILE="$LOG_DIR/auto_collect_$(date +%Y%m%d).log"
-MAX_POSTS_PER_CATEGORY=5
+MAX_POSTS_PER_CATEGORY=50
 
 # Create log directory if it doesn't exist
 mkdir -p "$LOG_DIR"

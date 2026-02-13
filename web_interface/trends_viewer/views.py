@@ -3,10 +3,14 @@ from django.views.generic import ListView, DetailView
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
+from django.core.cache import cache
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_control
 from .models import CollectionRun, CollectedTopic, TrendCluster
 import asyncio
 import logging
 import threading
+import hashlib
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +86,81 @@ def get_preferred_provider(session):
     else:
         # Use free provider (LibreTranslate)
         return 'libretranslate'
+
+
+# ============================================================================
+# Page-Level Caching Utilities
+# ============================================================================
+
+def make_cache_key(prefix, trend_id, lang='en', version=1):
+    """
+    Generate a cache key for trend pages.
+
+    Args:
+        prefix: Cache key prefix (e.g., 'trend_detail')
+        trend_id: Trend ID
+        lang: Language code
+        version: Cache version (increment to invalidate all caches)
+
+    Returns:
+        Cache key string
+    """
+    return f"{prefix}:{trend_id}:{lang}:v{version}"
+
+
+def get_cached_translation_context(trend_id, lang='en'):
+    """
+    Get cached translation context for a trend.
+
+    This caches the entire translated trend + topics to avoid
+    redundant cache lookups for individual text fragments.
+
+    Args:
+        trend_id: Trend ID
+        lang: Language code
+
+    Returns:
+        Cached context dict or None if not cached
+    """
+    cache_key = make_cache_key('translated_trend', trend_id, lang)
+    return cache.get(cache_key)
+
+
+def set_cached_translation_context(trend_id, lang, context_data, timeout=3600):
+    """
+    Cache translation context for a trend.
+
+    Args:
+        trend_id: Trend ID
+        lang: Language code
+        context_data: Context dict containing trend and topics
+        timeout: Cache timeout in seconds (default: 1 hour)
+    """
+    cache_key = make_cache_key('translated_trend', trend_id, lang)
+    cache.set(cache_key, context_data, timeout)
+    logger.info(f"Cached translation context for trend {trend_id} in {lang}")
+
+
+def invalidate_trend_cache(trend_id):
+    """
+    Invalidate all cached versions of a trend across all languages.
+
+    This should be called when a trend is updated.
+
+    Args:
+        trend_id: Trend ID to invalidate
+    """
+    languages = ['en', 'zh', 'es', 'fr', 'de', 'ja', 'ko']  # Common languages
+    for lang in languages:
+        # Invalidate page cache
+        page_cache_key = make_cache_key('trend_detail', trend_id, lang)
+        cache.delete(page_cache_key)
+
+        # Invalidate translation context cache
+        trans_cache_key = make_cache_key('translated_trend', trend_id, lang)
+        cache.delete(trans_cache_key)
+
+    logger.info(f"Invalidated all caches for trend {trend_id}")
 
 
 def translate_text_sync(text, target_lang='zh', session=None):
@@ -566,24 +645,56 @@ class TrendDetailView(DetailView):
     template_name = 'trends_viewer/trend_detail.html'
     context_object_name = 'trend'
 
+    def get_queryset(self):
+        """Optimize query with prefetch_related to avoid N+1 queries."""
+        return TrendCluster.objects.prefetch_related('topics')
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        topics_list = list(self.object.topics.all())
-        context['topics'] = topics_list
 
         # Language support (from middleware)
         target_lang = getattr(self.request, 'LANGUAGE_CODE', 'en')
         context['current_lang'] = target_lang
 
-        # Translate trend and topics if requested (using batch translation for performance)
-        if target_lang != 'en':
-            logger.info(f"Batch translating trend detail to {target_lang}")
-            # Translate the single trend
-            translate_trends_batch([self.object], target_lang, self.request.session)
+        # Get topics (already prefetched, so no extra query)
+        topics_list = list(self.object.topics.all())
+        context['topics'] = topics_list
 
-            # Batch translate all topics in this trend
-            if topics_list:
-                translate_topics_batch(topics_list, target_lang, self.request.session)
+        # PERFORMANCE OPTIMIZATION: Skip server-side translation
+        # Let client-side JavaScript handle translation for better performance
+        #
+        # Benefits:
+        # 1. Fast initial page load (English always loads quickly)
+        # 2. Translations load progressively in background
+        # 3. Uses localStorage cache for instant subsequent visits
+        # 4. No redundant server-side cache lookups (33+ per request)
+        #
+        # The lazy translation JavaScript in trend_detail.html will:
+        # - Check localStorage cache first (instant if cached)
+        # - Fetch translations via AJAX if needed
+        # - Apply translations client-side
+        #
+        # NOTE: If you want server-side translation (slower but works without JS),
+        # uncomment the code below:
+        #
+        # if target_lang != 'en':
+        #     cached_context = get_cached_translation_context(self.object.id, target_lang)
+        #     if cached_context:
+        #         logger.info(f"✅ Cache HIT: Using cached translation for trend {self.object.id} ({target_lang})")
+        #         context['trend'] = cached_context['trend']
+        #         context['topics'] = cached_context['topics']
+        #         return context
+        #
+        #     logger.info(f"⚠️  Cache MISS: Translating trend {self.object.id} to {target_lang}")
+        #     translate_trends_batch([self.object], target_lang, self.request.session)
+        #     if topics_list:
+        #         translate_topics_batch(topics_list, target_lang, self.request.session)
+        #
+        #     translation_context = {
+        #         'trend': self.object,
+        #         'topics': topics_list
+        #     }
+        #     set_cached_translation_context(self.object.id, target_lang, translation_context)
 
         return context
 

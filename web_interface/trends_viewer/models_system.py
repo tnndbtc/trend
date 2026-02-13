@@ -155,6 +155,38 @@ class SystemSettings(models.Model):
     )
 
     # ============================================================================
+    # Data Retention Settings
+    # ============================================================================
+
+    data_retention_days = models.IntegerField(
+        default=7,
+        validators=[MinValueValidator(1), MaxValueValidator(365)],
+        help_text='Automatically delete collection runs older than N days (default: 7)',
+        verbose_name='Data Retention Period (Days)'
+    )
+
+    enable_auto_cleanup = models.BooleanField(
+        default=True,
+        help_text='Automatically clean up old data daily at 3:00 AM',
+        verbose_name='Enable Automatic Cleanup'
+    )
+
+    last_cleanup_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        editable=False,
+        help_text='Timestamp of last successful cleanup operation',
+        verbose_name='Last Cleanup Time'
+    )
+
+    total_records_cleaned = models.IntegerField(
+        default=0,
+        editable=False,
+        help_text='Total collection runs deleted since installation',
+        verbose_name='Total Records Cleaned'
+    )
+
+    # ============================================================================
     # Metadata
     # ============================================================================
 

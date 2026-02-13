@@ -594,6 +594,10 @@ class SystemSettingsAdmin(admin.ModelAdmin):
         'updated_at',
         'estimated_monthly_api_cost',
         'total_summaries_generated',
+        'last_cleanup_at',
+        'total_records_cleaned',
+        'database_size_display',
+        'next_cleanup_display',
     ]
 
     # Field organization
@@ -659,6 +663,23 @@ class SystemSettingsAdmin(admin.ModelAdmin):
                 'total_summaries_generated',
             ),
             'classes': ('collapse',),
+        }),
+        ('🗑️ Data Retention', {
+            'fields': (
+                'data_retention_days',
+                'enable_auto_cleanup',
+                'database_size_display',
+                'last_cleanup_at',
+                'total_records_cleaned',
+                'next_cleanup_display',
+            ),
+            'description': (
+                '<strong>Automatic cleanup configuration:</strong><br>'
+                '• Data older than the retention period will be automatically deleted daily at 3:00 AM<br>'
+                '• This helps manage disk space and keeps the database performant<br>'
+                '• Recommended: 7 days for most installations<br><br>'
+                '<em>You can also manually clean old data using setup.sh option 9</em>'
+            )
         }),
         ('📝 Metadata', {
             'fields': (
@@ -729,6 +750,98 @@ class SystemSettingsAdmin(admin.ModelAdmin):
             f'{count:,}'
         )
     summaries_generated_display.short_description = 'Summaries Generated'
+
+    def database_size_display(self, obj):
+        """Display current database size and record counts."""
+        from web_interface.trends_viewer.models import CollectionRun, CollectedTopic, TrendCluster
+        import os
+
+        try:
+            # Get record counts
+            runs_count = CollectionRun.objects.count()
+            topics_count = CollectedTopic.objects.count()
+            clusters_count = TrendCluster.objects.count()
+
+            # Get database file size
+            db_path = '/home/tnnd/data/code/trend/web_interface/db/db.sqlite3'
+            if os.path.exists(db_path):
+                db_size_bytes = os.path.getsize(db_path)
+                db_size_mb = db_size_bytes / (1024 * 1024)
+
+                # Color code based on size
+                if db_size_mb < 100:
+                    color = '#28a745'  # green
+                elif db_size_mb < 500:
+                    color = '#ffc107'  # yellow
+                else:
+                    color = '#f44336'  # red
+
+                return format_html(
+                    '<div style="line-height: 1.8;">'
+                    '<strong style="color: {}; font-size: 16px;">{:.1f} MB</strong><br>'
+                    '<span style="font-size: 12px; color: #666;">'
+                    '📊 {} runs<br>'
+                    '📰 {} topics<br>'
+                    '🔗 {} clusters'
+                    '</span>'
+                    '</div>',
+                    color,
+                    db_size_mb,
+                    runs_count,
+                    topics_count,
+                    clusters_count
+                )
+            else:
+                return format_html('<span style="color: #999;">Database file not found</span>')
+
+        except Exception as e:
+            return format_html('<span style="color: #f44336;">Error: {}</span>', str(e))
+
+    database_size_display.short_description = 'Database Status'
+
+    def next_cleanup_display(self, obj):
+        """Display next scheduled cleanup time."""
+        from django.utils import timezone
+        from datetime import datetime, time, timedelta
+
+        if not obj.enable_auto_cleanup:
+            return format_html(
+                '<span style="color: #f44336; font-weight: bold;">⚠️ Disabled</span><br>'
+                '<span style="font-size: 12px; color: #666;">Enable auto-cleanup to schedule</span>'
+            )
+
+        try:
+            # Cleanup runs daily at 3:00 AM
+            now = timezone.now()
+            today_3am = timezone.make_aware(
+                datetime.combine(now.date(), time(hour=3, minute=0))
+            )
+
+            # If it's past 3 AM today, next cleanup is tomorrow at 3 AM
+            if now > today_3am:
+                next_cleanup = today_3am + timedelta(days=1)
+            else:
+                next_cleanup = today_3am
+
+            # Calculate time until next cleanup
+            time_until = next_cleanup - now
+            hours_until = int(time_until.total_seconds() // 3600)
+            minutes_until = int((time_until.total_seconds() % 3600) // 60)
+
+            return format_html(
+                '<div style="line-height: 1.8;">'
+                '<strong style="color: #28a745;">⏰ {}</strong><br>'
+                '<span style="font-size: 12px; color: #666;">in {}h {}m</span>'
+                '</div>',
+                next_cleanup.strftime('%Y-%m-%d %H:%M'),
+                hours_until,
+                minutes_until
+            )
+
+        except Exception as e:
+            return format_html('<span style="color: #f44336;">Error: {}</span>', str(e))
+
+    next_cleanup_display.short_description = 'Next Scheduled Cleanup'
 
     # Custom actions
     actions = [

@@ -854,9 +854,132 @@ clean_old_data() {
     echo ""
     echo -e "${COLOR_HIGHLIGHT}Clean Old Data${COLOR_RESET}"
     echo ""
-    echo "Feature available in web interface"
-    echo "Or run: docker-compose exec web python manage.py clean_old_data --days 30"
+
+    # Check if web container is running
+    if ! $DOCKER_COMPOSE ps | grep -q "web.*Up"; then
+        print_error "Web container is not running"
+        echo "Please start the services first"
+        read -p "Press Enter to continue..."
+        return
+    fi
+
+    # Get current retention setting from SystemSettings
+    echo -e "${COLOR_INFO}Current Retention Policy:${COLOR_RESET}"
+    CURRENT_RETENTION=$($DOCKER_COMPOSE exec -T web python manage.py shell <<EOF 2>/dev/null
+from web_interface.trends_viewer.models_system import SystemSettings
+try:
+    settings = SystemSettings.load()
+    print(f"{settings.data_retention_days}")
+except:
+    print("7")
+EOF
+)
+    CURRENT_RETENTION=$(echo "$CURRENT_RETENTION" | tr -d '[:space:]')
+    echo "  Configured retention: ${CURRENT_RETENTION} days"
     echo ""
+
+    # Get database statistics
+    echo -e "${COLOR_INFO}Current Database Status:${COLOR_RESET}"
+    DB_STATS=$($DOCKER_COMPOSE exec -T web python manage.py shell <<EOF 2>/dev/null
+from web_interface.trends_viewer.models import CollectionRun, CollectedTopic, TrendCluster
+import os
+runs = CollectionRun.objects.count()
+topics = CollectedTopic.objects.count()
+clusters = TrendCluster.objects.count()
+db_path = '/app/web_interface/db/db.sqlite3'
+if os.path.exists(db_path):
+    size_mb = os.path.getsize(db_path) / (1024 * 1024)
+    print(f"{runs}|{topics}|{clusters}|{size_mb:.1f}")
+else:
+    print("0|0|0|0.0")
+EOF
+)
+    DB_STATS=$(echo "$DB_STATS" | tr -d '[:space:]')
+    IFS='|' read -r RUNS TOPICS CLUSTERS SIZE_MB <<< "$DB_STATS"
+    echo "  📊 Collection Runs: ${RUNS}"
+    echo "  📰 Topics: ${TOPICS}"
+    echo "  🔗 Clusters: ${CLUSTERS}"
+    echo "  💾 Database Size: ${SIZE_MB} MB"
+    echo ""
+
+    # Ask user for retention days
+    echo -e "${COLOR_WARNING}Cleanup Configuration:${COLOR_RESET}"
+    echo "  Data older than N days will be permanently deleted"
+    echo "  (Default: ${CURRENT_RETENTION} days, or press Enter to use current setting)"
+    echo ""
+    read -p "Enter retention days (1-365) or press Enter for default [${CURRENT_RETENTION}]: " RETENTION_DAYS
+
+    # Use default if empty
+    if [ -z "$RETENTION_DAYS" ]; then
+        RETENTION_DAYS=$CURRENT_RETENTION
+    fi
+
+    # Validate input
+    if ! [[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]] || [ "$RETENTION_DAYS" -lt 1 ] || [ "$RETENTION_DAYS" -gt 365 ]; then
+        print_error "Invalid retention days. Must be between 1 and 365"
+        read -p "Press Enter to continue..."
+        return
+    fi
+
+    echo ""
+    echo -e "${COLOR_INFO}Dry run: Checking what would be deleted...${COLOR_RESET}"
+    echo ""
+
+    # Run dry-run first
+    $DOCKER_COMPOSE exec web python manage.py clean_old_data --days "$RETENTION_DAYS" --dry-run
+
+    echo ""
+    echo -e "${COLOR_WARNING}⚠️  WARNING: This operation cannot be undone!${COLOR_RESET}"
+    echo ""
+    read -p "Do you want to proceed with deletion? (yes/no): " CONFIRM
+
+    if [ "$CONFIRM" = "yes" ] || [ "$CONFIRM" = "y" ]; then
+        echo ""
+        echo -e "${COLOR_INFO}Deleting old data...${COLOR_RESET}"
+        echo ""
+
+        # Actually delete
+        $DOCKER_COMPOSE exec web python manage.py clean_old_data --days "$RETENTION_DAYS"
+
+        echo ""
+        echo -e "${COLOR_SUCCESS}✓ Cleanup complete!${COLOR_RESET}"
+        echo ""
+
+        # Show updated statistics
+        echo -e "${COLOR_INFO}Updated Database Status:${COLOR_RESET}"
+        DB_STATS_AFTER=$($DOCKER_COMPOSE exec -T web python manage.py shell <<EOF 2>/dev/null
+from web_interface.trends_viewer.models import CollectionRun, CollectedTopic, TrendCluster
+import os
+runs = CollectionRun.objects.count()
+topics = CollectedTopic.objects.count()
+clusters = TrendCluster.objects.count()
+db_path = '/app/web_interface/db/db.sqlite3'
+if os.path.exists(db_path):
+    size_mb = os.path.getsize(db_path) / (1024 * 1024)
+    print(f"{runs}|{topics}|{clusters}|{size_mb:.1f}")
+else:
+    print("0|0|0|0.0")
+EOF
+)
+        DB_STATS_AFTER=$(echo "$DB_STATS_AFTER" | tr -d '[:space:]')
+        IFS='|' read -r RUNS_AFTER TOPICS_AFTER CLUSTERS_AFTER SIZE_AFTER <<< "$DB_STATS_AFTER"
+
+        RUNS_DELETED=$((RUNS - RUNS_AFTER))
+        TOPICS_DELETED=$((TOPICS - TOPICS_AFTER))
+        CLUSTERS_DELETED=$((CLUSTERS - CLUSTERS_AFTER))
+        SPACE_FREED=$(echo "$SIZE_MB - $SIZE_AFTER" | bc)
+
+        echo "  📊 Collection Runs: ${RUNS_AFTER} (deleted: ${RUNS_DELETED})"
+        echo "  📰 Topics: ${TOPICS_AFTER} (deleted: ${TOPICS_DELETED})"
+        echo "  🔗 Clusters: ${CLUSTERS_AFTER} (deleted: ${CLUSTERS_DELETED})"
+        echo "  💾 Database Size: ${SIZE_AFTER} MB (freed: ${SPACE_FREED} MB)"
+        echo ""
+    else
+        echo ""
+        echo -e "${COLOR_INFO}Cleanup cancelled${COLOR_RESET}"
+        echo ""
+    fi
+
     read -p "Press Enter to continue..."
 }
 
