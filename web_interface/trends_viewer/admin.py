@@ -160,6 +160,12 @@ class TrendClusterAdmin(admin.ModelAdmin):
         custom_urls = get_translation_dashboard_urls(self.admin_site)
         return custom_urls + urls
 
+    def changelist_view(self, request, extra_context=None):
+        """Add translation dashboard link to changelist."""
+        extra_context = extra_context or {}
+        extra_context['translation_dashboard_url'] = reverse('admin:translation_dashboard')
+        return super().changelist_view(request, extra_context=extra_context)
+
 
 # Apply translation actions to TrendClusterAdmin
 add_translation_actions_to_admin(TrendClusterAdmin)

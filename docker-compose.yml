@@ -169,6 +169,7 @@ services:
     container_name: trend-web-celery-worker
     volumes:
       - .:/app
+      - ./data/db:/app/web_interface/db
       - ./data/cache:/root/.cache
     env_file:
       - .env.docker

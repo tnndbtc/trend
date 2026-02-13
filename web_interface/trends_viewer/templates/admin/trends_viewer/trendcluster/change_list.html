@@ -1,0 +1,12 @@
+{% extends "admin/change_list.html" %}
+
+{% block object-tools-items %}
+    {# Add Translation Dashboard button before other buttons #}
+    <li>
+        <a href="{{ translation_dashboard_url }}" class="button" style="background-color: #28a745; color: white; font-weight: bold; padding: 8px 16px; border-radius: 4px; text-decoration: none; display: inline-block;">
+            🌐 Translation Dashboard
+        </a>
+    </li>
+    {# Keep default buttons (Add, etc.) #}
+    {{ block.super }}
+{% endblock %}
