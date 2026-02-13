@@ -40,7 +40,7 @@
                         {{ topic.title }}
                     </a>
                 </h4>
-                <span class="badge badge-{{ topic.source }}">{{ topic.source|format_source_name }}</span>
+                <span class="badge badge-{{ topic.source|format_source_class }}">{{ topic|format_source_name }}</span>
             </div>
 
             {% if topic.description %}

@@ -33,6 +33,7 @@ class CollectedTopic(models.Model):
     title = models.CharField(max_length=500)
     description = models.TextField(blank=True)
     source = models.CharField(max_length=50)  # No choices constraint - sources discovered dynamically
+    source_name = models.CharField(max_length=100, blank=True, help_text="Display name for the source (e.g., 'Wenxuecity News', 'BBC', 'Google News')")
     url = models.URLField(max_length=1000)
     timestamp = models.DateTimeField()
 

@@ -77,7 +77,7 @@
                 {% if not current_source or topic.source == current_source %}
                 <div style="background: white; padding: 1rem; border-radius: 4px; border: 1px solid #e0e0e0;">
                     <div style="display: flex; align-items: start; gap: 1rem;">
-                        <span class="badge badge-{{ topic.source }}" style="margin-top: 0.25rem;">{{ topic.source }}</span>
+                        <span class="badge badge-{{ topic.source|format_source_class }}" style="margin-top: 0.25rem;">{{ topic|format_source_name }}</span>
                         <div style="flex: 1;">
                             <h4 style="margin-bottom: 0.5rem; font-size: 1rem; font-weight: 500;">
                                 <a href="{{ topic.url }}" target="_blank" rel="noopener noreferrer" style="color: #2c3e50; text-decoration: none;">

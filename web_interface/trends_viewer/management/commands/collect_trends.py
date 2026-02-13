@@ -3,7 +3,7 @@ import time
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from asgiref.sync import sync_to_async
-from trends_viewer.models import CollectionRun, CollectedTopic, TrendCluster
+from trends_viewer.models import CollectionRun, CollectedTopic, TrendCluster, CrawlerSource
 
 # Import trend_agent modules
 from trend_agent.collectors import get_all_collectors
@@ -15,6 +15,60 @@ from trend_agent.processing.content_fetcher import fetch_content_for_topic
 from trend_agent.llm.summarizer import summarize_single_topic, summarize_topics_batch
 from trend_agent.categories import load_categories
 from trend_agent.config import is_source_diversity_enabled, get_max_percentage_per_source
+
+
+def get_source_display_name(source_str):
+    """
+    Get the display name for a source.
+
+    For custom sources, looks up the CrawlerSource to get the actual name.
+    For other sources, formats them nicely.
+
+    Args:
+        source_str: Source identifier (e.g., "SourceType.CUSTOM", "reddit", "bbc")
+
+    Returns:
+        Display name for the source (e.g., "Wenxuecity News", "Reddit", "BBC")
+    """
+    if not source_str:
+        return ""
+
+    # Convert to string and handle SourceType enum values
+    value_str = str(source_str)
+
+    # Check if it's a custom source
+    if 'CUSTOM' in value_str.upper():
+        # Try to find the corresponding CrawlerSource
+        try:
+            custom_source = CrawlerSource.objects.filter(source_type='custom', enabled=True).first()
+            if custom_source:
+                return custom_source.name
+        except Exception:
+            pass
+        return "Custom"
+
+    # Handle SourceType enum values (e.g., "SourceType.BBC" -> "bbc")
+    if value_str.startswith('SourceType.'):
+        value_str = value_str.replace('SourceType.', '').lower()
+
+    # Convert to lowercase for comparison
+    value_lower = value_str.lower()
+
+    # Special case mappings for nice display names
+    special_cases = {
+        'google_news': 'Google News',
+        'ap_news': 'AP News',
+        'al_jazeera': 'Al Jazeera',
+        'hackernews': 'Hacker News',
+        'bbc': 'BBC',
+        'guardian': 'The Guardian',
+        'reuters': 'Reuters',
+        'reddit': 'Reddit',
+        'demo': 'Demo',
+    }
+
+    # Return special case or formatted version
+    return special_cases.get(value_lower, value_lower.replace('_', ' ').title())
 
 
 def apply_source_diversity_limit(ranked_topics, max_total, max_percentage_per_source=0.20):
@@ -323,11 +377,16 @@ class Command(BaseCommand):
             # RawItem has published_at, not timestamp
             timestamp = getattr(topic, 'published_at', None) or getattr(topic, 'timestamp', None)
 
+            # Get source string and display name
+            source_str = str(topic.source) if hasattr(topic.source, 'value') else topic.source
+            source_name = await sync_to_async(get_source_display_name)(source_str)
+
             db_topic = await sync_to_async(CollectedTopic.objects.create)(
                 collection_run=collection_run,
                 title=topic.title,
                 description=topic.description or "",
-                source=str(topic.source) if hasattr(topic.source, 'value') else topic.source,
+                source=source_str,
+                source_name=source_name,
                 url=str(topic.url),
                 timestamp=timestamp,
                 upvotes=upvotes,
