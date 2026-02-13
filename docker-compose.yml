@@ -195,7 +195,9 @@ services:
       # Translation API keys
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - DEEPL_API_KEY=${DEEPL_API_KEY:-}
-    command: celery -A web_interface worker --loglevel=info --queues=translation,default --concurrency=2
+      # Celery worker concurrency (fallback if SystemSettings unavailable)
+      - CELERY_WORKER_CONCURRENCY=${CELERY_WORKER_CONCURRENCY:-4}
+    command: /app/scripts/start-celery-worker.sh
     depends_on:
       postgres:
         condition: service_healthy

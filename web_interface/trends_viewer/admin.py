@@ -719,6 +719,19 @@ class SystemSettingsAdmin(admin.ModelAdmin):
         """Prevent deletion of settings."""
         return False
 
+    def changelist_view(self, request, extra_context=None):
+        """
+        Redirect directly to the change page for singleton model.
+        No need to show a list view when there's only one record.
+        """
+        from django.shortcuts import redirect
+
+        # Get or create the singleton settings
+        obj = SystemSettings.load()
+
+        # Redirect to the change page
+        return redirect('admin:trends_viewer_systemsettings_change', object_id=obj.pk)
+
     # List display
     list_display = [
         'provider_with_status',
@@ -793,9 +806,17 @@ class SystemSettingsAdmin(admin.ModelAdmin):
         ('⚡ Performance', {
             'fields': (
                 'batch_size',
+                'celery_worker_concurrency',
                 'enable_summarization_cache',
             ),
-            'classes': ('collapse',),
+            'description': (
+                '<strong>Performance optimization settings:</strong><br>'
+                '• <strong>Worker Concurrency</strong>: Number of parallel translation workers. '
+                'Higher = faster translations but more CPU/memory usage. '
+                '<span style="color: #ff9800; font-weight: bold;">⚠️ Requires worker restart to apply changes</span><br>'
+                '• <strong>Batch Size</strong>: Number of items to process in parallel<br>'
+                '• <strong>Summary Caching</strong>: Cache generated summaries to avoid re-processing'
+            )
         }),
         ('💰 Cost Tracking', {
             'fields': (

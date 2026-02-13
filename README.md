@@ -502,7 +502,7 @@ JAEGER_ENABLED=true
 PROMETHEUS_PORT=9090
 
 # Performance
-CELERY_WORKER_CONCURRENCY=4
+CELERY_WORKER_CONCURRENCY=8  # Fallback value (overridden by System Settings)
 DB_POOL_SIZE=20
 CACHE_TTL_DEFAULT=300
 
@@ -515,6 +515,41 @@ ENABLE_RATE_LIMITING=true
 **Generate Secure Keys**:
 ```bash
 ./setup.sh → 10) Generate API Keys
+```
+
+### ⚡ Performance Tuning
+
+#### Translation Worker Concurrency
+
+Control the number of parallel Celery workers for translation tasks to optimize performance based on your server's CPU/memory:
+
+**Option 1: Django Admin (Recommended)**
+1. Go to System Settings: http://localhost:11800/admin/trends_viewer/systemsettings/
+   - (This automatically opens the settings editor)
+2. Scroll to the **⚡ Performance** section
+3. Set **Translation Worker Concurrency** (1-32)
+   - **Recommended**: 2x CPU cores for I/O-bound translation tasks
+   - **Example**: 4 CPU server → 8 workers
+4. Click **Save** at the bottom
+5. Apply changes by recreating the worker:
+   ```bash
+   docker compose up -d --force-recreate web-celery-worker
+   ```
+
+**Option 2: Environment Variable (Fallback)**
+```bash
+# In .env.docker
+CELERY_WORKER_CONCURRENCY=8
+```
+
+**Performance Impact**:
+- **2 workers** (default): ~1 trend/minute
+- **8 workers** (4 CPU server): ~4 trends/minute (4x faster)
+
+**Verify Current Concurrency**:
+```bash
+docker compose logs web-celery-worker | grep concurrency
+# Output: .> concurrency: 8 (prefork)
 ```
 
 ---

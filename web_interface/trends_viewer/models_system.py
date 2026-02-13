@@ -128,6 +128,18 @@ class SystemSettings(models.Model):
         verbose_name='Batch Processing Size'
     )
 
+    celery_worker_concurrency = models.IntegerField(
+        default=4,
+        validators=[MinValueValidator(1), MaxValueValidator(32)],
+        help_text=(
+            'Number of concurrent Celery workers for translation tasks. '
+            'Higher = faster translations but more CPU/memory usage. '
+            'Recommended: 2x CPU cores for I/O-bound tasks. '
+            'Requires worker restart to apply changes.'
+        ),
+        verbose_name='Translation Worker Concurrency'
+    )
+
     enable_summarization_cache = models.BooleanField(
         default=True,
         help_text='Cache generated summaries to avoid re-processing',
