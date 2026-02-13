@@ -1,4 +1,5 @@
 from django.urls import path
+from django.views.generic import RedirectView
 from . import views, views_preferences, views_auth
 
 app_name = 'trends_viewer'
@@ -8,8 +9,10 @@ urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('trends/', views.TrendListView.as_view(), name='trend_list'),
     path('trends/<int:pk>/', views.TrendDetailView.as_view(), name='trend_detail'),
-    path('topics/', views.TopicListView.as_view(), name='topic_list'),
     path('runs/', views.CollectionRunListView.as_view(), name='run_list'),
+
+    # Redirect old /topics/ URL to dashboard (for bookmarked URLs)
+    path('topics/', RedirectView.as_view(pattern_name='trends_viewer:dashboard', permanent=True), name='topic_list'),
 
     # Preference-based filtered views (Phase 1)
     path('filtered/topics/', views_preferences.FilteredTopicListView.as_view(), name='filtered_topics'),

@@ -333,7 +333,6 @@
             <ul>
                 <li><a href="{% url 'trends_viewer:dashboard' %}">{{ menu.dashboard }}</a></li>
                 <li><a href="{% url 'trends_viewer:trend_list' %}">{{ menu.all_trends }}</a></li>
-                <li><a href="{% url 'trends_viewer:topic_list' %}">{{ menu.all_topics }}</a></li>
                 <li><a href="{% url 'trends_viewer:filtered_trends' %}" style="background: rgba(52, 152, 219, 0.2); padding: 0.5rem 1rem; border-radius: 4px;">🔍 {{ menu.my_feed }}</a></li>
                 <li><a href="{% url 'trends_viewer:run_list' %}">{{ menu.history }}</a></li>
                 {% if user.is_authenticated %}
