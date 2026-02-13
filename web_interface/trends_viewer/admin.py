@@ -753,7 +753,7 @@ class SystemSettingsAdmin(admin.ModelAdmin):
 
     def database_size_display(self, obj):
         """Display current database size and record counts."""
-        from web_interface.trends_viewer.models import CollectionRun, CollectedTopic, TrendCluster
+        from trends_viewer.models import CollectionRun, CollectedTopic, TrendCluster
         import os
 
         try:

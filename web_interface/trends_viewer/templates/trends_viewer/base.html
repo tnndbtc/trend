@@ -608,6 +608,26 @@
                     if (fullSummaryElement && translation.full_summary) {
                         fullSummaryElement.textContent = translation.full_summary;
                     }
+
+                    // Update topics (for detail pages)
+                    if (translation.topics && Array.isArray(translation.topics)) {
+                        translation.topics.forEach(topicData => {
+                            const topicElement = document.querySelector(`[data-topic-id="${topicData.id}"]`);
+                            if (topicElement) {
+                                // Update topic title
+                                const topicTitleElement = topicElement.querySelector('[data-field="topic-title"]');
+                                if (topicTitleElement && topicData.title) {
+                                    topicTitleElement.textContent = topicData.title;
+                                }
+
+                                // Update topic description
+                                const topicDescElement = topicElement.querySelector('[data-field="topic-description"]');
+                                if (topicDescElement && topicData.description) {
+                                    topicDescElement.textContent = topicData.description;
+                                }
+                            }
+                        });
+                    }
                 }
             }
 

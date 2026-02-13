@@ -5,9 +5,11 @@ This service provides cost-free summarization using extractive algorithms
 from sumy, nltk, and gensim. Works completely offline without API calls.
 
 Supported algorithms:
-- TextRank: Graph-based ranking
+- TextRank: Graph-based ranking (recommended)
 - LexRank: Graph-based with cosine similarity
 - LSA: Latent Semantic Analysis
+- Luhn: Word frequency based (fastest)
+- KL: Kullback-Leibler divergence
 """
 
 import asyncio
@@ -21,6 +23,8 @@ from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.text_rank import TextRankSummarizer
 from sumy.summarizers.lex_rank import LexRankSummarizer
 from sumy.summarizers.lsa import LsaSummarizer
+from sumy.summarizers.luhn import LuhnSummarizer
+from sumy.summarizers.kl import KLSummarizer
 
 # NLTK for tokenization and keywords
 import nltk
@@ -62,6 +66,8 @@ class FreeSummarizationService(BaseLLMService):
         'textrank': TextRankSummarizer,
         'lexrank': LexRankSummarizer,
         'lsa': LsaSummarizer,
+        'luhn': LuhnSummarizer,
+        'kl': KLSummarizer,
     }
 
     def __init__(self, algorithm: str = 'textrank', language: str = 'english'):
@@ -69,7 +75,7 @@ class FreeSummarizationService(BaseLLMService):
         Initialize free summarization service.
 
         Args:
-            algorithm: Summarization algorithm ('textrank', 'lexrank', 'lsa')
+            algorithm: Summarization algorithm ('textrank', 'lexrank', 'lsa', 'luhn', 'kl')
             language: Language for tokenization ('english', 'spanish', etc.)
         """
         self.config = SummarizationConfig(algorithm=algorithm, language=language)

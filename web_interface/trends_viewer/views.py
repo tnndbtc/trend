@@ -357,8 +357,8 @@ def get_trend_translations(request):
                 'message': 'No valid trend IDs provided'
             }, status=400)
 
-        # Fetch trends
-        trends = list(TrendCluster.objects.filter(id__in=trend_ids))
+        # Fetch trends with prefetch topics for detail pages
+        trends = list(TrendCluster.objects.filter(id__in=trend_ids).prefetch_related('topics'))
 
         if not trends:
             return JsonResponse({
@@ -371,14 +371,34 @@ def get_trend_translations(request):
             logger.info(f"API: Batch translating {len(trends)} trends to {target_lang}")
             translate_trends_batch(trends, target_lang, request.session)
 
+            # Also translate topics for detail pages
+            all_topics = []
+            for trend in trends:
+                all_topics.extend(list(trend.topics.all()))
+
+            if all_topics:
+                logger.info(f"API: Batch translating {len(all_topics)} topics to {target_lang}")
+                translate_topics_batch(all_topics, target_lang, request.session)
+
         # Build response
         translations = {}
         for trend in trends:
+            # Translate topics if any
+            topics_data = []
+            for topic in trend.topics.all():
+                topics_data.append({
+                    'id': topic.id,
+                    'title': topic.title,
+                    'description': topic.description or '',
+                    'is_translated': getattr(topic, 'is_translated', False)
+                })
+
             translations[str(trend.id)] = {
                 'id': trend.id,
                 'title': trend.title,
                 'summary': trend.summary,
                 'full_summary': trend.full_summary,
+                'topics': topics_data,
                 'is_translated': getattr(trend, 'is_translated', False),
                 'translation_lang': getattr(trend, 'translation_lang', 'en')
             }
