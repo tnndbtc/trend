@@ -65,7 +65,7 @@ class TrendCluster(models.Model):
     # Language choices for better UX in admin
     LANGUAGE_CHOICES = [
         ('en', 'English'),
-        ('zh', 'Chinese (中文)'),
+        ('zh-Hans', 'Chinese (中文)'),
         ('es', 'Spanish (Español)'),
         ('fr', 'French (Français)'),
         ('de', 'German (Deutsch)'),
@@ -434,12 +434,12 @@ class TranslatedContent(models.Model):
     # Language codes (ISO 639-1)
     source_language = models.CharField(
         max_length=10,
-        help_text="Source language code (e.g., 'en', 'zh', 'auto')"
+        help_text="Source language code (e.g., 'en', 'zh-Hans', 'auto')"
     )
 
     target_language = models.CharField(
         max_length=10,
-        help_text="Target language code (e.g., 'en', 'zh', 'es')"
+        help_text="Target language code (e.g., 'en', 'zh-Hans', 'es')"
     )
 
     # Translation content
@@ -509,7 +509,7 @@ class TrendTranslationStatus(models.Model):
     )
     language = models.CharField(
         max_length=10,
-        help_text="Target language code (e.g., 'zh', 'es', 'fr')"
+        help_text="Target language code (e.g., 'zh-Hans', 'es', 'fr')"
     )
     translated = models.BooleanField(
         default=False,

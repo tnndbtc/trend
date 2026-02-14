@@ -344,7 +344,7 @@ class ContentFilter:
 
         # Check for CJK characters
         if re.search(r'[\u4e00-\u9fff]', text):  # Chinese
-            return 'zh'
+            return 'zh-Hans'
         if re.search(r'[\u3040-\u309f\u30a0-\u30ff]', text):  # Japanese
             return 'ja'
         if re.search(r'[\uac00-\ud7af]', text):  # Korean

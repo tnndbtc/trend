@@ -40,7 +40,7 @@ def mock_translation_manager():
 
     # Mock get_supported_languages method
     manager.get_supported_languages = MagicMock(
-        return_value=["en", "es", "fr", "de", "ja", "zh", "ar", "ru"]
+        return_value=["en", "es", "fr", "de", "ja", "zh-Hans", "ar", "ru"]
     )
 
     # Mock get_stats method

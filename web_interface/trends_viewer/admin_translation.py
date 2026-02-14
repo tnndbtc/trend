@@ -19,6 +19,7 @@ from django.conf import settings
 
 from .models import TrendTranslationStatus, TrendCluster
 from .tasks import pre_translate_trends, bulk_translate_all_trends, translate_single_trend
+from .views import normalize_lang_code
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,11 @@ def get_translation_dashboard_urls(admin_site):
             name='translation_dashboard'
         ),
         path(
+            'translation-dashboard/stats/',
+            admin_site.admin_view(translation_stats_api),
+            name='translation_stats_api'
+        ),
+        path(
             'translation-dashboard/bulk-translate/',
             admin_site.admin_view(bulk_translate_view),
             name='bulk_translate'
@@ -142,9 +148,12 @@ def translation_dashboard_view(request):
     # Get translation statistics
     stats = {}
     for lang_code, lang_name in settings.TRANSLATION_PRIORITY_LANGUAGES:
+        # Normalize language code to match database format (e.g., 'zh' -> 'zh-Hans')
+        normalized_lang = normalize_lang_code(lang_code)
+
         total_trends = TrendCluster.objects.count()
         translated_trends = TrendTranslationStatus.objects.filter(
-            language=lang_code,
+            language=normalized_lang,
             translated=True
         ).count()
 
@@ -168,8 +177,11 @@ def translation_dashboard_view(request):
     # Calculate daily translation activity
     daily_stats = {}
     for lang_code, lang_name in settings.TRANSLATION_PRIORITY_LANGUAGES:
+        # Normalize language code to match database format
+        normalized_lang = normalize_lang_code(lang_code)
+
         count = TrendTranslationStatus.objects.filter(
-            language=lang_code,
+            language=normalized_lang,
             translated_at__gte=recent_cutoff
         ).count()
         daily_stats[lang_code] = count
@@ -185,6 +197,51 @@ def translation_dashboard_view(request):
     }
 
     return render(request, 'admin/translation_dashboard.html', context)
+
+
+def translation_stats_api(request):
+    """
+    API endpoint that returns current translation statistics as JSON.
+    Used for real-time dashboard updates without page refresh.
+    """
+    from django.utils import timezone
+    from datetime import timedelta
+
+    # Get translation statistics
+    stats = {}
+    for lang_code, lang_name in settings.TRANSLATION_PRIORITY_LANGUAGES:
+        # Normalize language code to match database format
+        normalized_lang = normalize_lang_code(lang_code)
+
+        total_trends = TrendCluster.objects.count()
+        translated_trends = TrendTranslationStatus.objects.filter(
+            language=normalized_lang,
+            translated=True
+        ).count()
+
+        coverage_percent = (translated_trends / total_trends * 100) if total_trends > 0 else 0
+
+        stats[lang_code] = {
+            'name': lang_name,
+            'translated': translated_trends,
+            'total': total_trends,
+            'coverage': round(coverage_percent, 1),
+            'untranslated': total_trends - translated_trends,
+        }
+
+    # Get recent translations count (last 24 hours)
+    recent_cutoff = timezone.now() - timedelta(hours=24)
+    recent_count = TrendTranslationStatus.objects.filter(
+        translated=True,
+        translated_at__gte=recent_cutoff
+    ).count()
+
+    return JsonResponse({
+        'status': 'success',
+        'stats': stats,
+        'recent_count': recent_count,
+        'timestamp': timezone.now().isoformat()
+    })
 
 
 def bulk_translate_view(request):

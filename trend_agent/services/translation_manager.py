@@ -228,7 +228,8 @@ class TranslationCache:
         hash_input = f"{text}|{source}|{target_lang}".encode("utf-8")
         text_hash = hashlib.md5(hash_input).hexdigest()
 
-        db_cached = get_db_translation(text_hash, source_lang, target_lang)
+        # CRITICAL FIX: Wrap sync database call in async context
+        db_cached = await sync_to_async(get_db_translation)(text_hash, source_lang, target_lang)
         if db_cached:
             self._cache_hits += 1
             # Populate Redis cache for faster future lookups

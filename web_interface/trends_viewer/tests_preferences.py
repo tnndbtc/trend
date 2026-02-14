@@ -213,18 +213,18 @@ class FilteredViewsTestCase(TestCase):
             source='reddit',
             url='http://example.com/zh',
             timestamp=datetime.now(),
-            language='zh',
+            language='zh-Hans',
             upvotes=100,
         )
 
         response = self.client.get(
             reverse('trends_viewer:filtered_topics'),
-            {'apply_filters': '1', 'languages': 'zh'}
+            {'apply_filters': '1', 'languages': 'zh-Hans'}
         )
 
         topics = response.context['topics']
         for topic in topics:
-            self.assertEqual(topic.language, 'zh')
+            self.assertEqual(topic.language, 'zh-Hans')
 
     def test_min_upvotes_filtering(self):
         """Test filtering by minimum upvotes."""

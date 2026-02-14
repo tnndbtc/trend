@@ -49,7 +49,7 @@ def pre_translate_trends(
 
     Args:
         trend_ids: Specific trend IDs to translate (optional)
-        languages: Languages to translate to (default: ['zh'])
+        languages: Languages to translate to (default: ['zh-Hans'])
         collection_run_id: ID of collection run to translate all trends from (optional)
 
     Returns:
@@ -57,7 +57,7 @@ def pre_translate_trends(
     """
     # Default to Chinese only
     if languages is None:
-        languages = ['zh']
+        languages = ['zh-Hans']
 
     logger.info(
         f"Starting pre-translation task for "
@@ -187,7 +187,7 @@ def _normalize_lang_code(lang_code: str) -> str:
     Normalize language codes for translation services.
 
     Args:
-        lang_code: Language code (e.g., 'zh', 'es')
+        lang_code: Language code (e.g., 'zh-Hans', 'es')
 
     Returns:
         Normalized language code
@@ -221,7 +221,7 @@ def pre_translate_after_collection(collection_result: Dict[str, Any]) -> Dict[st
     # Trigger pre-translation for Chinese
     result = pre_translate_trends.delay(
         collection_run_id=collection_run_id,
-        languages=['zh']  # Chinese only for now
+        languages=['zh-Hans']  # Chinese only for now
     )
 
     # Wait for translation to complete (with timeout)
@@ -247,13 +247,13 @@ def warm_translation_cache(languages: Optional[List[str]] = None) -> Dict[str, A
     available in common languages.
 
     Args:
-        languages: Languages to warm cache for (default: ['zh'])
+        languages: Languages to warm cache for (default: ['zh-Hans'])
 
     Returns:
         Dictionary with cache warming results
     """
     if languages is None:
-        languages = ['zh']
+        languages = ['zh-Hans']
 
     logger.info(f"Starting cache warming for languages: {languages}")
 
@@ -315,7 +315,7 @@ def trigger_pre_translation(trend_ids: List[int], languages: List[str] = None) -
         Celery task ID
     """
     if languages is None:
-        languages = ['zh']
+        languages = ['zh-Hans']
 
     result = pre_translate_trends.delay(
         trend_ids=trend_ids,

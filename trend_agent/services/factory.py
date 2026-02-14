@@ -340,7 +340,7 @@ class ServiceFactory:
     # Translation Services
     # ========================================================================
 
-    def get_translation_manager(self, force_new: bool = False) -> TranslationManager:
+    async def get_translation_manager(self, force_new: bool = False) -> TranslationManager:
         """
         Get translation manager with multiple providers and caching.
 
@@ -386,8 +386,11 @@ class ServiceFactory:
         cache = None
         try:
             redis_repo = self.get_redis_repository()
+            # CRITICAL FIX: Connect to Redis before using it
+            await redis_repo.connect()
             cache_ttl = self.config.get("translation_cache_ttl", 604800)  # 7 days
             cache = TranslationCache(redis_repo, ttl_seconds=cache_ttl)
+            logger.info("✓ Redis cache connected and ready")
         except Exception as e:
             logger.warning(f"Translation cache not available: {e}")
 

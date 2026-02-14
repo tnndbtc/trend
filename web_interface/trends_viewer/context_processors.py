@@ -5,9 +5,10 @@ Provides global template variables for all views, including:
 - Menu translations based on current language
 - Current language code
 - Translation provider preference
+- Category translation function
 """
 
-from .translations import MENU_TRANSLATIONS
+from .translations import MENU_TRANSLATIONS, translate_category
 
 
 def menu_translations(request):
@@ -41,6 +42,7 @@ def menu_translations(request):
     return {
         'menu': translations,
         'current_lang': current_lang,
+        'translate_category': translate_category,
     }
 
 

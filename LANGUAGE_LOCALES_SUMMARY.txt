@@ -1,0 +1,299 @@
+================================================================================
+ROUND 2 LANGUAGE LOCALES VERIFICATION - EXECUTIVE SUMMARY
+================================================================================
+
+CRITICAL FINDING: Language Code Format Mismatch Throughout Translation Pipeline
+
+================================================================================
+COMPONENT ANALYSIS TABLE
+================================================================================
+
+Component                              | Language Format Used  | Issue Severity
+---------------------------------------|----------------------|---------------
+1. Middleware                          | Locale (zh-Hans)     | CORRECT
+2. Django Views                        | Locale (zh-Hans)     | CORRECT  
+3. Translation Manager                 | Locale (zh-Hans)     | CRITICAL - no normalization
+4. LibreTranslate Service             | Locale (zh-Hans)     | CRITICAL - expects 2-letter
+5. DeepL Service                       | Locale (zh-Hans)     | CRITICAL - expects 2-letter
+6. OpenAI Service                      | Locale (zh-Hans)     | OK - converts to names
+7. Celery Tasks                        | Locale (zh-Hans)     | CRITICAL - propagates issue
+8. Admin Dashboard                     | Locale (zh-Hans)     | CRITICAL - database mismatch
+9. REST API Endpoints                  | 2-5 char (any)       | WARNING - no validation
+10. Database Models                    | 10 char (any)        | WARNING - accepts any format
+
+================================================================================
+ACTUAL LANGUAGE CODE FLOW IN SYSTEM
+================================================================================
+
+Normal Request Path:
+  User URL Parameter
+       ↓
+  Middleware.normalize_lang_code() → 'zh-Hans'
+       ↓
+  request.LANGUAGE_CODE = 'zh-Hans'
+       ↓
+  View.translate_text_sync() → normalize_lang_code('zh-Hans') → 'zh-Hans'
+       ↓
+  manager.translate(text, 'zh-Hans')
+       ↓
+  LibreTranslateService.translate(text, 'zh-Hans')
+       ↓
+  API Payload: {"target": "zh-Hans"}
+       ↓
+  LibreTranslate API Error: "Unknown target language: zh-Hans"
+       ↗ SHOULD BE "zh"
+
+================================================================================
+CRITICAL ISSUES IDENTIFIED
+================================================================================
+
+ISSUE #1: Translation Manager Missing Normalization
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Location: trend_agent/services/translation_manager.py
+Lines:    503 (translate), 618 (translate_batch)
+Problem:  
+  - Receives locale format codes from views (e.g., 'zh-Hans', 'es-ES')
+  - Passes them directly to providers
+  - Providers expect 2-letter codes (e.g., 'zh', 'es')
+  - NO normalization occurs at manager level
+  - Cache lookups use wrong format
+Status:   CRITICAL - Will cause API failures
+
+ISSUE #2: LibreTranslate Expects 2-Letter Codes
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Location: trend_agent/services/translation.py, lines 621-630
+Problem:
+  - Payload builds with target_language directly
+  - No code to extract 2-letter prefix from locale format
+  - API endpoint: /translate?target=zh-Hans (WRONG)
+  - API expects: /translate?target=zh (CORRECT)
+Status:   CRITICAL - Translation failures for any language with region
+
+ISSUE #3: DeepL Requires Specific 2-Letter Format
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Location: trend_agent/services/translation.py, lines 864-870
+Problem:
+  - Code uses .upper() on entire code: 'es-ES'.upper() → 'ES-ES'
+  - DeepL expects just 'ES' (2-letter uppercase)
+  - Payload: {"target_lang": "ES-ES"} (WRONG)
+  - Should be: {"target_lang": "ES"} (CORRECT)
+Status:   CRITICAL - DeepL API will reject requests
+
+ISSUE #4: Database Cache Format Inconsistency
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Location: web_interface/trends_viewer/models.py
+           trend_agent/services/translation_manager.py
+Problem:
+  - TranslatedContent stores whatever format is passed
+  - Different request types might use different formats
+  - Cache lookups: filter(target_language='zh-Hans')
+  - But historical data might have: 'zh', 'ZH', 'zh-cn'
+  - Result: Cache misses despite data existing
+Status:   HIGH - Performance degradation
+
+ISSUE #5: Admin Dashboard Queries Use Locale Format
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Location: web_interface/trends_viewer/admin_translation.py
+           Lines 152, 181, 214
+Problem:
+  - normalize_lang_code('es') → 'es-ES'
+  - Database query: filter(language='es-ES')
+  - But TrendTranslationStatus might have mixed formats
+  - Translation coverage stats will be inaccurate
+Status:   MEDIUM - Wrong reporting, data consistency issue
+
+================================================================================
+AFFECTED CODE PATHS
+================================================================================
+
+✗ BROKEN: Standard Web Translation Flow
+───────────────────────────────────────
+Middleware('zh') → View(normalize→'zh-Hans') → Manager('zh-Hans')
+→ LibreTranslate API (expects 'zh') → API ERROR
+
+✗ BROKEN: DeepL Translation
+────────────────────────────
+Manager('es-ES') → DeepL('.upper()' → 'ES-ES') → API ERROR (expects 'ES')
+
+✗ BROKEN: Database Cache Lookups  
+──────────────────────────────────
+View('zh-Hans') → Cache query(target_language='zh-Hans')
+→ No match if stored as 'zh' → Unnecessary API call
+
+✓ WORKING: OpenAI Translation
+───────────────────────────────
+Manager('zh-Hans') → OpenAI(LANGUAGE_NAMES lookup) → "Chinese (Simplified)"
+→ API works (uses language names, not codes)
+
+================================================================================
+DATA FLOW DIAGRAM
+================================================================================
+
+                              USER REQUEST
+                                   |
+                         /?lang=zh-Hans
+                                   |
+                    ┌──────────────┴──────────────┐
+                    |                             |
+              MIDDLEWARE.normalize_lang_code()   (LINE 68-98)
+                    |                             |
+                    └──────────────┬──────────────┘
+                                   |
+                    request.LANGUAGE_CODE = 'zh-Hans'
+                                   |
+                    ┌──────────────┴──────────────┐
+                    |                             |
+            VIEW.translate_text_sync()           (LINE 178)
+                    |
+        normalize_lang_code('zh-Hans')          (LINE 203)
+                    |
+                    → 'zh-Hans'  [SAME - NO CHANGE]
+                    |
+        ┌───────────┴──────────────────┐
+        |                              |
+    manager.translate()            (LINE 209-214)
+        |
+        ├─ target_language: 'zh-Hans'
+        └─ source_language: 'en'
+               |
+        ┌──────┴──────────────┐
+        |                     |
+    CACHE.get()          provider.translate()
+    ('zh-Hans')              ('zh-Hans')
+        |                     |
+        └──────┬──────────────┘
+               |
+    ┌──────────┴──────────────┐
+    |                         |
+LibreTranslateService    DeepLService
+.translate()             .translate()
+('zh-Hans')              ('zh-Hans')
+    |                         |
+    |                    .upper()
+    |                         |
+    |                   'ZH-HANS'
+    |                         |
+    ├─ Payload:           ├─ Payload:
+    │ {"target":"zh-Hans"}│  {"target_lang":"ZH-HANS"}
+    |                     |
+    └──────────┬──────────┘
+               |
+    ┌──────────┴──────────────┐
+    |                         |
+API ERROR               API ERROR
+"Unknown lang:        "Unknown lang:
+  zh-Hans"              ZH-HANS"
+    |                     |
+    └──────────┬──────────┘
+               |
+        TRANSLATION FAILS
+
+================================================================================
+RECOMMENDED FIXES (BY PRIORITY)
+================================================================================
+
+PRIORITY 1 - CRITICAL (Causes API Failures)
+═══════════════════════════════════════════════════════════════════════════════
+
+FIX 1.1: Add Normalization to TranslationManager
+File:    trend_agent/services/translation_manager.py
+Lines:   Add method _normalize_to_provider_code()
+Action:  
+  - Extract base 2-letter code from locale format
+  - Map special cases (zh-Hans→zh, en-US→en, etc.)
+  - Apply normalization BEFORE calling any provider
+  - Apply normalization BEFORE cache lookup
+Cost:    ~20 lines of code
+
+FIX 1.2: Fix LibreTranslate Service
+File:    trend_agent/services/translation.py, lines 621-630
+Action:
+  - Call _normalize_to_provider_code() before API call
+  - Pass 2-letter code to API
+  - Example: normalize_lang_code('zh-Hans') → 'zh'
+Cost:    ~3 lines of code
+
+FIX 1.3: Fix DeepL Service
+File:    trend_agent/services/translation.py, lines 864-870
+Action:
+  - Extract base code before .upper()
+  - Example: normalize_lang_code('es-ES') → 'es' → 'ES'
+  - Don't uppercase the entire string
+Cost:    ~5 lines of code
+
+PRIORITY 2 - HIGH (Data Consistency)
+═══════════════════════════════════════════════════════════════════════════════
+
+FIX 2.1: Standardize Database Format
+File:    trend_agent/services/translation_manager.py
+Action:
+  - Always save cache using 2-letter codes
+  - Migration to normalize existing data
+  - Document expected format
+
+FIX 2.2: Fix Admin Dashboard Queries
+File:    web_interface/trends_viewer/admin_translation.py, lines 152, 181, 214
+Action:
+  - Don't normalize before database query
+  - Query with stored format (locale)
+  - Or normalize all database data to match
+
+PRIORITY 3 - MEDIUM (Validation)
+═══════════════════════════════════════════════════════════════════════════════
+
+FIX 3.1: Add API Validation
+File:    api/routers/translation.py, line 34
+Action:
+  - Validate target_language against SUPPORTED_LANGUAGES
+  - Reject invalid codes early
+
+FIX 3.2: Add Database Validators
+File:    web_interface/trends_viewer/models.py
+Action:
+  - Add validators to TranslatedContent.target_language
+  - Add validators to TrendTranslationStatus.language
+  - Document valid format
+
+================================================================================
+TESTING SCENARIOS
+================================================================================
+
+Test Case 1: Chinese Simplified (Locale Format)
+Input:    /?lang=zh-Hans
+Expected: Translation to Chinese
+Current:  API error "Unknown language: zh-Hans"
+
+Test Case 2: Spanish (Locale Format)
+Input:    target_language='es-ES', provider='deepl'
+Expected: DeepL translates to Spanish
+Current:  API error "Unknown language: ES-ES"
+
+Test Case 3: Database Cache Hit
+Input:    Same text, language as previous request
+Expected: Should return cached translation
+Current:  Cache miss (format mismatch)
+
+Test Case 4: Admin Dashboard Coverage
+Input:    admin/translation-dashboard/
+Expected: Accurate translation coverage percentages
+Current:  Wrong counts (format mismatch in queries)
+
+================================================================================
+ESTIMATED IMPACT
+================================================================================
+
+Severity:      CRITICAL
+Affected Code: Translation pipeline, all providers except OpenAI
+Impact:        
+  - LibreTranslate: All locale-format requests will fail
+  - DeepL: All locale-format requests will fail
+  - Database: Cache misses despite data existing
+  - Admin: Wrong coverage statistics
+  - API: Validation missing
+
+Scope:         ALL language parameters throughout system
+Risk Level:    HIGH - System cannot reliably translate non-English content
+Fix Effort:    MEDIUM (~50 lines code + testing)
+Fix Time Est:  2-4 hours
+
+================================================================================

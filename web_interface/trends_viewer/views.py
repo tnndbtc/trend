@@ -45,7 +45,9 @@ def get_translation_manager():
         try:
             from trend_agent.services import get_service_factory
             factory = get_service_factory()
-            _translation_manager = factory.get_translation_manager()
+            # get_translation_manager() is async, so we need to run it in event loop
+            loop = get_or_create_event_loop()
+            _translation_manager = loop.run_until_complete(factory.get_translation_manager())
             logger.info("Translation manager initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize translation manager: {e}")
@@ -162,7 +164,7 @@ def invalidate_trend_cache(trend_id):
     Args:
         trend_id: Trend ID to invalidate
     """
-    languages = ['en', 'zh', 'es', 'fr', 'de', 'ja', 'ko']  # Common languages
+    languages = ['en', 'zh-Hans', 'es', 'fr', 'de', 'ja', 'ko']  # Common languages
     for lang in languages:
         # Invalidate page cache
         page_cache_key = make_cache_key('trend_detail', trend_id, lang)
@@ -175,13 +177,13 @@ def invalidate_trend_cache(trend_id):
     logger.info(f"Invalidated all caches for trend {trend_id}")
 
 
-def translate_text_sync(text, target_lang='zh', session=None):
+def translate_text_sync(text, target_lang='zh-Hans', session=None):
     """
     Synchronously translate text to target language.
 
     Args:
         text: Text to translate
-        target_lang: Target language code (default: 'zh' for Chinese)
+        target_lang: Target language code (default: 'zh-Hans' for Chinese)
         session: Django session (optional, for provider preference)
 
     Returns:
@@ -220,7 +222,7 @@ def translate_text_sync(text, target_lang='zh', session=None):
         return text  # Return original text on error
 
 
-def translate_texts_batch(texts, target_lang='zh', session=None):
+def translate_texts_batch(texts, target_lang='zh-Hans', session=None):
     """
     Batch translate multiple texts to target language.
 
@@ -229,7 +231,7 @@ def translate_texts_batch(texts, target_lang='zh', session=None):
 
     Args:
         texts: List of text strings to translate
-        target_lang: Target language code (default: 'zh' for Chinese)
+        target_lang: Target language code (default: 'zh-Hans' for Chinese)
         session: Django session (optional, for provider preference)
 
     Returns:
@@ -332,7 +334,7 @@ def set_translation_provider(request):
         }, status=500)
 
 
-def translate_trend(trend, target_lang='zh', session=None):
+def translate_trend(trend, target_lang='zh-Hans', session=None):
     """
     Translate a TrendCluster object to target language.
 
@@ -365,7 +367,7 @@ def translate_trend(trend, target_lang='zh', session=None):
     return trend
 
 
-def translate_topic(topic, target_lang='zh', session=None):
+def translate_topic(topic, target_lang='zh-Hans', session=None):
     """
     Translate a CollectedTopic object to target language.
 
@@ -398,7 +400,7 @@ def translate_topic(topic, target_lang='zh', session=None):
     return topic
 
 
-def translate_trends_batch(trends, target_lang='zh', session=None):
+def translate_trends_batch(trends, target_lang='zh-Hans', session=None):
     """
     Batch translate multiple TrendCluster objects to target language.
 
@@ -449,7 +451,7 @@ def translate_trends_batch(trends, target_lang='zh', session=None):
         return trends
 
 
-def translate_topics_batch(topics, target_lang='zh', session=None):
+def translate_topics_batch(topics, target_lang='zh-Hans', session=None):
     """
     Batch translate multiple CollectedTopic objects to target language.
 
@@ -500,7 +502,7 @@ def translate_topics_batch(topics, target_lang='zh', session=None):
         return topics
 
 
-def load_pretranslated_content(trend, topics, target_lang='zh'):
+def load_pretranslated_content(trend, topics, target_lang='zh-Hans'):
     """
     Bulk-load pre-translated content from database for a trend and its topics.
 

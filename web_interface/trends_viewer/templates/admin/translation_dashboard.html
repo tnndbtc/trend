@@ -3,6 +3,25 @@
 
 {% block title %}Translation Dashboard{% endblock %}
 
+{% block extrahead %}
+{{ block.super }}
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<style>
+    .progress-bar-fill {
+        transition: width 0.8s ease-in-out;
+    }
+    .stat-number {
+        transition: color 0.3s ease;
+    }
+    .stat-updated {
+        color: #28a745 !important;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <h1>🌐 Translation Dashboard</h1>
 
@@ -33,21 +52,22 @@
         </thead>
         <tbody>
             {% for lang_code, lang_data in stats.items %}
-            <tr style="border-bottom: 1px solid #dee2e6;">
+            <tr style="border-bottom: 1px solid #dee2e6;" data-lang="{{ lang_code }}">
                 <td style="padding: 12px;"><strong>{{ lang_data.name }}</strong></td>
-                <td style="padding: 12px; text-align: center;">{{ lang_data.translated }}</td>
+                <td style="padding: 12px; text-align: center;" class="stat-number" data-stat="translated">{{ lang_data.translated }}</td>
                 <td style="padding: 12px; text-align: center;">
                     <div style="background: #e9ecef; height: 20px; border-radius: 10px; position: relative;">
-                        <div style="background: {% if lang_data.coverage >= 80 %}#28a745{% elif lang_data.coverage >= 50 %}#ffc107{% else %}#dc3545{% endif %};
+                        <div class="progress-bar-fill" data-lang="{{ lang_code }}"
+                             style="background: {% if lang_data.coverage >= 80 %}#28a745{% elif lang_data.coverage >= 50 %}#ffc107{% else %}#dc3545{% endif %};
                                     height: 100%; width: {{ lang_data.coverage }}%; border-radius: 10px;">
                         </div>
                         <span style="position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-                                     font-size: 12px; font-weight: bold;">
+                                     font-size: 12px; font-weight: bold;" data-stat="coverage">
                             {{ lang_data.coverage|floatformat:1 }}%
                         </span>
                     </div>
                 </td>
-                <td style="padding: 12px; text-align: center;">{{ lang_data.untranslated }}</td>
+                <td style="padding: 12px; text-align: center;" class="stat-number" data-stat="untranslated">{{ lang_data.untranslated }}</td>
                 <td style="padding: 12px; text-align: center;">
                     {% if lang_data.untranslated > 0 %}
                     <form method="post" action="{% url 'admin:bulk_translate' %}" style="display: inline;">
@@ -55,7 +75,7 @@
                         <input type="hidden" name="language" value="{{ lang_code }}">
                         <button type="submit" style="background: #007bff; color: white; border: none;
                                                       padding: 6px 12px; border-radius: 4px; cursor: pointer;">
-                            Translate {{ lang_data.untranslated }} trends
+                            Translate <span data-stat="untranslated">{{ lang_data.untranslated }}</span> trends
                         </button>
                     </form>
                     {% else %}
@@ -110,5 +130,106 @@
         ← Back to Trends
     </a>
 </div>
+
+<script>
+// Real-time progress update functionality
+const UPDATE_INTERVAL = 10000; // 10 seconds in milliseconds
+let updateTimer;
+
+/**
+ * Fetch latest translation statistics from API
+ */
+async function fetchStats() {
+    try {
+        const response = await fetch('{% url "admin:translation_stats_api" %}');
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            updateDashboard(data.stats);
+        }
+    } catch (error) {
+        console.error('Failed to fetch translation stats:', error);
+    }
+}
+
+/**
+ * Update dashboard UI with new statistics
+ */
+function updateDashboard(stats) {
+    for (const [langCode, langData] of Object.entries(stats)) {
+        const row = document.querySelector(`tr[data-lang="${langCode}"]`);
+        if (!row) continue;
+
+        // Update translated count
+        const translatedCell = row.querySelector('[data-stat="translated"]');
+        if (translatedCell && translatedCell.textContent !== String(langData.translated)) {
+            animateNumberChange(translatedCell, langData.translated);
+        }
+
+        // Update untranslated count
+        const untranslatedCells = row.querySelectorAll('[data-stat="untranslated"]');
+        untranslatedCells.forEach(cell => {
+            if (cell.textContent !== String(langData.untranslated)) {
+                animateNumberChange(cell, langData.untranslated);
+            }
+        });
+
+        // Update coverage percentage
+        const coverageSpan = row.querySelector('[data-stat="coverage"]');
+        if (coverageSpan) {
+            const oldCoverage = coverageSpan.textContent;
+            const newCoverage = langData.coverage + '%';
+            if (oldCoverage !== newCoverage) {
+                coverageSpan.textContent = newCoverage;
+            }
+        }
+
+        // Update progress bar width
+        const progressBar = row.querySelector(`.progress-bar-fill[data-lang="${langCode}"]`);
+        if (progressBar) {
+            progressBar.style.width = langData.coverage + '%';
+
+            // Update color based on coverage
+            if (langData.coverage >= 80) {
+                progressBar.style.background = '#28a745'; // green
+            } else if (langData.coverage >= 50) {
+                progressBar.style.background = '#ffc107'; // yellow
+            } else {
+                progressBar.style.background = '#dc3545'; // red
+            }
+        }
+    }
+}
+
+/**
+ * Animate number change with brief highlight
+ */
+function animateNumberChange(element, newValue) {
+    element.classList.add('stat-updated');
+    element.textContent = newValue;
+
+    setTimeout(() => {
+        element.classList.remove('stat-updated');
+    }, 1000);
+}
+
+/**
+ * Initialize dashboard
+ */
+function initDashboard() {
+    // Start periodic updates (every 10 seconds)
+    updateTimer = setInterval(fetchStats, UPDATE_INTERVAL);
+
+    console.log('✓ Translation dashboard initialized - auto-updating every 10 seconds');
+}
+
+// Initialize when page loads
+document.addEventListener('DOMContentLoaded', initDashboard);
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    clearInterval(updateTimer);
+});
+</script>
 
 {% endblock %}

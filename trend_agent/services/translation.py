@@ -7,6 +7,7 @@ Provides production-ready translation using multiple providers:
 - DeepL (commercial, high-quality)
 """
 
+import asyncio
 import hashlib
 import logging
 import time
@@ -35,7 +36,7 @@ LANGUAGE_NAMES = {
     "pt": "Portuguese",
     "ru": "Russian",
     "ja": "Japanese",
-    "zh": "Chinese",
+    "zh-Hans": "Chinese (Simplified)",
     "ko": "Korean",
     "ar": "Arabic",
     "hi": "Hindi",
@@ -527,7 +528,10 @@ class LibreTranslateService(BaseTranslationService):
         # HTTP client
         self._client = httpx.AsyncClient(timeout=timeout)
 
-        logger.info(f"Initialized LibreTranslateService (host={host})")
+        # Semaphore to limit concurrent requests (avoid overwhelming the service)
+        self._semaphore = asyncio.Semaphore(10)
+
+        logger.info(f"Initialized LibreTranslateService (host={host}, max_concurrent=10)")
 
     async def translate(
         self,
@@ -559,15 +563,20 @@ class LibreTranslateService(BaseTranslationService):
             return texts
 
         start_time = time.time()
-        translated = []
 
         try:
-            # LibreTranslate doesn't support batch, translate one by one
-            for text in valid_texts:
-                result = await self._translate_single(
-                    text, target_language, source_language
-                )
-                translated.append(result)
+            # LibreTranslate doesn't support batch API, but we can parallelize individual requests
+            # Use asyncio.gather() with semaphore to limit concurrent requests
+            async def translate_with_semaphore(text):
+                async with self._semaphore:
+                    return await self._translate_single(
+                        text, target_language, source_language
+                    )
+
+            # Translate all texts in parallel (limited by semaphore)
+            translated = await asyncio.gather(
+                *[translate_with_semaphore(text) for text in valid_texts]
+            )
 
             # Track stats
             self._total_chars += sum(len(t) for t in valid_texts)
@@ -689,7 +698,7 @@ class LibreTranslateService(BaseTranslationService):
             "pt",
             "ru",
             "ja",
-            "zh",
+            "zh-Hans",
             "ko",
             "ar",
             "hi",

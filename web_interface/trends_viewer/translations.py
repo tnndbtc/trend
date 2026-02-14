@@ -73,7 +73,7 @@ MENU_TRANSLATIONS = {
         'translation': 'Translation',
     },
 
-    'zh': {
+    'zh-Hans': {
         # Main navigation
         'app_title': 'AI趋势情报',
         'dashboard': '仪表板',
@@ -467,6 +467,83 @@ MENU_TRANSLATIONS = {
 }
 
 
+# Category translations
+CATEGORY_TRANSLATIONS = {
+    'en-US': {
+        'Technology': 'Technology',
+        'Politics': 'Politics',
+        'Entertainment': 'Entertainment',
+        'Sports': 'Sports',
+        'Science': 'Science',
+        'Business': 'Business',
+        'World News': 'World News',
+    },
+    'zh-Hans': {
+        'Technology': '技术',
+        'Politics': '政治',
+        'Entertainment': '娱乐',
+        'Sports': '体育',
+        'Science': '科学',
+        'Business': '商业',
+        'World News': '国际新闻',
+    },
+    'es-ES': {
+        'Technology': 'Tecnología',
+        'Politics': 'Política',
+        'Entertainment': 'Entretenimiento',
+        'Sports': 'Deportes',
+        'Science': 'Ciencia',
+        'Business': 'Negocios',
+        'World News': 'Noticias Mundiales',
+    },
+    'fr-FR': {
+        'Technology': 'Technologie',
+        'Politics': 'Politique',
+        'Entertainment': 'Divertissement',
+        'Sports': 'Sports',
+        'Science': 'Science',
+        'Business': 'Affaires',
+        'World News': 'Actualités Mondiales',
+    },
+    'de-DE': {
+        'Technology': 'Technologie',
+        'Politics': 'Politik',
+        'Entertainment': 'Unterhaltung',
+        'Sports': 'Sport',
+        'Science': 'Wissenschaft',
+        'Business': 'Wirtschaft',
+        'World News': 'Weltnachrichten',
+    },
+    'ja-JP': {
+        'Technology': 'テクノロジー',
+        'Politics': '政治',
+        'Entertainment': 'エンターテインメント',
+        'Sports': 'スポーツ',
+        'Science': '科学',
+        'Business': 'ビジネス',
+        'World News': '世界のニュース',
+    },
+    'ko-KR': {
+        'Technology': '기술',
+        'Politics': '정치',
+        'Entertainment': '엔터테인먼트',
+        'Sports': '스포츠',
+        'Science': '과학',
+        'Business': '비즈니스',
+        'World News': '세계 뉴스',
+    },
+    'ru-RU': {
+        'Technology': 'Технологии',
+        'Politics': 'Политика',
+        'Entertainment': 'Развлечения',
+        'Sports': 'Спорт',
+        'Science': 'Наука',
+        'Business': 'Бизнес',
+        'World News': 'Мировые Новости',
+    },
+}
+
+
 def get_translation(lang_code, key, default=None):
     """
     Get a translated string for a specific language.
@@ -484,3 +561,37 @@ def get_translation(lang_code, key, default=None):
 
     translations = MENU_TRANSLATIONS.get(lang_code, MENU_TRANSLATIONS['en'])
     return translations.get(key, default or key)
+
+
+def translate_category(category_name, lang_code='en-US'):
+    """
+    Translate a category name to the specified language.
+
+    Args:
+        category_name: English category name (e.g., 'Technology')
+        lang_code: Target language code (e.g., 'zh-Hans')
+
+    Returns:
+        Translated category name, or original if translation not found
+    """
+    # Normalize language code
+    if lang_code in ['en', 'en-us']:
+        lang_code = 'en-US'
+    elif lang_code in ['zh', 'zh-hans']:
+        lang_code = 'zh-Hans'
+    elif lang_code in ['es', 'es-es']:
+        lang_code = 'es-ES'
+    elif lang_code in ['fr', 'fr-fr']:
+        lang_code = 'fr-FR'
+    elif lang_code in ['de', 'de-de']:
+        lang_code = 'de-DE'
+    elif lang_code in ['ja', 'ja-jp']:
+        lang_code = 'ja-JP'
+    elif lang_code in ['ko', 'ko-kr']:
+        lang_code = 'ko-KR'
+    elif lang_code in ['ru', 'ru-ru']:
+        lang_code = 'ru-RU'
+
+    # Get translation for language
+    category_dict = CATEGORY_TRANSLATIONS.get(lang_code, CATEGORY_TRANSLATIONS.get('en-US', {}))
+    return category_dict.get(category_name, category_name)

@@ -75,7 +75,7 @@ class MockTranslationService(BaseTranslationService):
 
     def get_supported_languages(self) -> list[str]:
         """Mock supported languages."""
-        return ["en", "es", "fr", "de", "ja", "zh"]
+        return ["en", "es", "fr", "de", "ja", "zh-Hans"]
 
     def get_stats(self) -> dict:
         """Mock stats."""

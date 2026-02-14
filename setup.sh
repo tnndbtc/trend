@@ -884,7 +884,12 @@ except:
     print("7")
 EOF
 )
-    CURRENT_RETENTION=$(echo "$CURRENT_RETENTION" | tr -d '[:space:]')
+    # Extract only numeric data (filter out Django's import message)
+    # Look for lines that contain only digits, or default to 7
+    CURRENT_RETENTION=$(echo "$CURRENT_RETENTION" | grep -E '^[0-9]+$' | tail -1 | tr -d '[:space:]')
+    if [ -z "$CURRENT_RETENTION" ]; then
+        CURRENT_RETENTION=7  # Default if query failed
+    fi
     echo "  Configured retention: ${CURRENT_RETENTION} days"
     echo ""
 
@@ -904,7 +909,12 @@ else:
     print("0|0|0|0.0")
 EOF
 )
-    DB_STATS=$(echo "$DB_STATS" | tr -d '[:space:]')
+    # Extract only data with pipe separators (filter out Django's import message)
+    # Look for lines matching the pattern: number|number|number|number.number
+    DB_STATS=$(echo "$DB_STATS" | grep -E '^[0-9]+\|[0-9]+\|[0-9]+\|[0-9.]+$' | tail -1 | tr -d '[:space:]')
+    if [ -z "$DB_STATS" ]; then
+        DB_STATS="0|0|0|0.0"  # Default if query failed
+    fi
     IFS='|' read -r RUNS TOPICS CLUSTERS SIZE_MB <<< "$DB_STATS"
     echo "  📊 Collection Runs: ${RUNS}"
     echo "  📰 Topics: ${TOPICS}"
@@ -917,7 +927,7 @@ EOF
     echo "  Data older than N days will be permanently deleted"
     echo "  (Default: ${CURRENT_RETENTION} days, or press Enter to use current setting)"
     echo ""
-    read -p "Enter retention days (1-365) or press Enter for default [${CURRENT_RETENTION}]: " RETENTION_DAYS
+    read -p "Enter retention days (0-365, 0=delete all) or press Enter for default [${CURRENT_RETENTION}]: " RETENTION_DAYS
 
     # Use default if empty
     if [ -z "$RETENTION_DAYS" ]; then
@@ -925,10 +935,28 @@ EOF
     fi
 
     # Validate input
-    if ! [[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]] || [ "$RETENTION_DAYS" -lt 1 ] || [ "$RETENTION_DAYS" -gt 365 ]; then
-        print_error "Invalid retention days. Must be between 1 and 365"
+    if ! [[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]] || [ "$RETENTION_DAYS" -lt 0 ] || [ "$RETENTION_DAYS" -gt 365 ]; then
+        print_error "Invalid retention days. Must be between 0 and 365"
         read -p "Press Enter to continue..."
         return
+    fi
+
+    # Special confirmation for nuclear delete (0 days = wipe everything)
+    if [ "$RETENTION_DAYS" = "0" ]; then
+        echo ""
+        echo -e "${COLOR_ERROR}⚠️⚠️⚠️  DANGER ZONE: COMPLETE DATA WIPE  ⚠️⚠️⚠️${COLOR_RESET}"
+        echo "You are about to DELETE ALL trend data from the database!"
+        echo "This includes all collected topics, trends, and collection history."
+        echo ""
+        read -p "Type 'DELETE ALL' to confirm (anything else cancels): " NUKE_CONFIRM
+        if [ "$NUKE_CONFIRM" != "DELETE ALL" ]; then
+            echo ""
+            print_info "Operation cancelled - no data was deleted"
+            read -p "Press Enter to continue..."
+            return
+        fi
+        echo ""
+        print_info "Nuclear delete confirmed. Proceeding..."
     fi
 
     echo ""
@@ -971,7 +999,12 @@ else:
     print("0|0|0|0.0")
 EOF
 )
-        DB_STATS_AFTER=$(echo "$DB_STATS_AFTER" | tr -d '[:space:]')
+        # Extract only data with pipe separators (filter out Django's import message)
+        # Look for lines matching the pattern: number|number|number|number.number
+        DB_STATS_AFTER=$(echo "$DB_STATS_AFTER" | grep -E '^[0-9]+\|[0-9]+\|[0-9]+\|[0-9.]+$' | tail -1 | tr -d '[:space:]')
+        if [ -z "$DB_STATS_AFTER" ]; then
+            DB_STATS_AFTER="0|0|0|0.0"  # Default if query failed
+        fi
         IFS='|' read -r RUNS_AFTER TOPICS_AFTER CLUSTERS_AFTER SIZE_AFTER <<< "$DB_STATS_AFTER"
 
         RUNS_DELETED=$((RUNS - RUNS_AFTER))

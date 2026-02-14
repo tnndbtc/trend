@@ -5,7 +5,7 @@
 
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-    <h2>Trending Topics</h2>
+    <h2>{{ menu.top_trends }}</h2>
     {% if current_run %}
     <p style="color: #666;">From: {{ current_run.timestamp|date:"Y-m-d H:i" }}</p>
     {% endif %}

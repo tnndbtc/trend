@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=3)
-def pre_translate_trends(self, trend_ids, target_lang='zh'):
+def pre_translate_trends(self, trend_ids, target_lang='zh-Hans'):
     """
     Background task to pre-translate trends to a target language.
 
@@ -28,7 +28,7 @@ def pre_translate_trends(self, trend_ids, target_lang='zh'):
 
     Args:
         trend_ids: List of TrendCluster IDs to translate
-        target_lang: Target language code (default: 'zh' for Chinese)
+        target_lang: Target language code (default: 'zh-Hans' for Chinese)
 
     Returns:
         dict: Summary of translation results
@@ -103,7 +103,7 @@ def pre_translate_trends(self, trend_ids, target_lang='zh'):
 
 
 @shared_task
-def bulk_translate_all_trends(target_lang='zh', days_back=None):
+def bulk_translate_all_trends(target_lang='zh-Hans', days_back=None):
     """
     Bulk translate all trends (or recent trends) to a target language.
 
@@ -157,7 +157,7 @@ def bulk_translate_all_trends(target_lang='zh', days_back=None):
 
 
 @shared_task
-def translate_single_trend(trend_id, target_lang='zh'):
+def translate_single_trend(trend_id, target_lang='zh-Hans'):
     """
     Translate a single trend to a target language.
 

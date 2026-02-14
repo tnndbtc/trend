@@ -127,7 +127,7 @@ AUTO_TRANSLATE_ENABLED = os.getenv('AUTO_TRANSLATE_ENABLED', 'true').lower() == 
 # Trends will be translated to these languages after each crawl
 AUTO_TRANSLATE_LANGUAGES = [
     lang.strip()
-    for lang in os.getenv('AUTO_TRANSLATE_LANGUAGES', 'zh').split(',')
+    for lang in os.getenv('AUTO_TRANSLATE_LANGUAGES', 'zh-Hans').split(',')
 ]
 
 # Only translate new trends (created in current crawl)
@@ -140,7 +140,7 @@ MAX_DAILY_TRANSLATION_COST = float(os.getenv('MAX_DAILY_TRANSLATION_COST', '50.0
 
 # Priority languages for translation (shown first in admin)
 TRANSLATION_PRIORITY_LANGUAGES = [
-    ('zh', 'Chinese (Simplified)'),
+    ('zh-Hans', 'Chinese (Simplified)'),
     ('es', 'Spanish'),
     ('fr', 'French'),
     ('de', 'German'),
