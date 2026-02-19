@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0.0",
+  "shotlist_id": "00000000-0000-0000-0000-000000000002",
+  "script_id": "00000000-0000-0000-0000-000000000001",
+  "timing_lock_hash": "__run_adapter_to_obtain__",
+  "total_duration_seconds": 6.0,
+  "shots": [
+    {
+      "shot_id": "s01_000",
+      "scene_id": "s01",
+      "shot_type": "ESTABLISHING",
+      "camera_framing": "WIDE",
+      "camera_movement": "STATIC",
+      "duration_seconds": 2.5,
+      "characters": [],
+      "expressions": null,
+      "environment_notes": "INT. COFFEE SHOP - DAY",
+      "action_beat": null,
+      "audio_intent": {
+        "vo_ref": null,
+        "sfx_tags": [],
+        "music_mood": null
+      }
+    },
+    {
+      "shot_id": "s01_001",
+      "scene_id": "s01",
+      "shot_type": "MEDIUM_DIALOGUE",
+      "camera_framing": "MEDIUM",
+      "camera_movement": "STATIC",
+      "duration_seconds": 1.5,
+      "characters": ["anna"],
+      "expressions": "joy",
+      "environment_notes": "INT. COFFEE SHOP - DAY",
+      "action_beat": null,
+      "audio_intent": {
+        "vo_ref": "anna",
+        "sfx_tags": [],
+        "music_mood": "uplifting"
+      }
+    },
+    {
+      "shot_id": "s01_002",
+      "scene_id": "s01",
+      "shot_type": "CLOSE_UP_EMOTIONAL",
+      "camera_framing": "CLOSE_UP",
+      "camera_movement": "PUSH_IN",
+      "duration_seconds": 2.0,
+      "characters": ["anna"],
+      "expressions": "joy",
+      "environment_notes": "INT. COFFEE SHOP - DAY",
+      "action_beat": null,
+      "audio_intent": {
+        "vo_ref": null,
+        "sfx_tags": [],
+        "music_mood": "uplifting"
+      }
+    }
+  ]
+}

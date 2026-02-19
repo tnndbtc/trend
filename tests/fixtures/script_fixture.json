@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0.0",
+  "script_id": "aaaaaaaa-0000-0000-0000-000000000001",
+  "title": "The Handoff",
+  "scenes": [
+    {
+      "scene_id": "s01",
+      "location": "INT. CAFE",
+      "time_of_day": "DAY",
+      "beats": [
+        {
+          "type": "dialogue",
+          "speaker_id": "alice",
+          "text": "Hello Bob, how are you today?",
+          "emotional_tag": "joy"
+        },
+        {
+          "type": "dialogue",
+          "speaker_id": "bob",
+          "text": "Not bad at all, thanks for asking."
+        },
+        {
+          "type": "action",
+          "description": "Alice slides a folder across the table."
+        }
+      ]
+    },
+    {
+      "scene_id": "s02",
+      "location": "EXT. STREET",
+      "time_of_day": "NIGHT",
+      "beats": [
+        {
+          "type": "action",
+          "description": "Bob watches Alice walk away.",
+          "emotional_tag": "sadness"
+        },
+        {
+          "type": "dialogue",
+          "speaker_id": "bob",
+          "text": "Wait...",
+          "emotional_tag": "grief"
+        }
+      ]
+    }
+  ]
+}
