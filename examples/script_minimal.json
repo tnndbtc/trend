@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "script_id": "00000000-0000-0000-0000-000000000001",
+  "title": "A Brief Encounter",
+  "scenes": [
+    {
+      "scene_id": "s01",
+      "location": "INT. COFFEE SHOP",
+      "time_of_day": "DAY",
+      "beats": [
+        {
+          "type": "dialogue",
+          "speaker_id": "anna",
+          "text": "You came.",
+          "emotional_tag": "joy"
+        }
+      ]
+    }
+  ]
+}
